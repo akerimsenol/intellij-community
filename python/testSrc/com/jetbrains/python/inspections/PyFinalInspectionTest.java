@@ -695,6 +695,11 @@ public class PyFinalInspectionTest extends PyInspectionTestCase {
                            pass""");
   }
 
+  // PY-85519
+  public void testImportAsFinal() {
+    doMultiFileTest();
+  }
+
   @NotNull
   @Override
   protected Class<? extends PyInspection> getInspectionClass() {

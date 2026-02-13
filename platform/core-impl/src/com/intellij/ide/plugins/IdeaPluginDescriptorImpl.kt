@@ -10,18 +10,18 @@ import com.intellij.openapi.extensions.LoadingOrder
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.extensions.impl.ExtensionPointImpl
 import com.intellij.openapi.util.NlsSafe
-import com.intellij.platform.plugins.parser.impl.PluginDescriptorBuilder
-import com.intellij.platform.plugins.parser.impl.PluginXmlConst
-import com.intellij.platform.plugins.parser.impl.RawPluginDescriptor
-import com.intellij.platform.plugins.parser.impl.elements.ActionElement
-import com.intellij.platform.plugins.parser.impl.elements.DependenciesElement
-import com.intellij.platform.plugins.parser.impl.elements.DependsElement
-import com.intellij.platform.plugins.parser.impl.elements.ExtensionElement
+import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorBuilder
+import com.intellij.platform.pluginSystem.parser.impl.PluginXmlConst
+import com.intellij.platform.pluginSystem.parser.impl.RawPluginDescriptor
+import com.intellij.platform.pluginSystem.parser.impl.elements.ActionElement
+import com.intellij.platform.pluginSystem.parser.impl.elements.DependenciesElement
+import com.intellij.platform.pluginSystem.parser.impl.elements.DependsElement
+import com.intellij.platform.pluginSystem.parser.impl.elements.ExtensionElement
 import org.jetbrains.annotations.ApiStatus.Internal
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.VisibleForTesting
 import java.nio.file.Path
-import java.util.*
+import java.util.Date
 
 private val LOG: Logger
   get() = PluginManagerCore.logger
@@ -100,13 +100,6 @@ sealed class IdeaPluginDescriptorImpl(
     raw = subBuilder.build(),
     descriptorPath = descriptorPath
   )
-
-  @Internal
-  fun registerExtensions(nameToPoint: Map<String, ExtensionPointImpl<*>>, listenerCallbacks: MutableList<in Runnable>?) {
-    for ((descriptors, point) in intersectMaps(extensions, nameToPoint)) {
-      point.registerExtensions(descriptors, pluginDescriptor = this, listenerCallbacks)
-    }
-  }
 }
 
 internal fun logUnexpectedElement(descriptor: IdeaPluginDescriptor, elementName: String) {
@@ -497,20 +490,6 @@ private fun convertExtensions(rawMap: Map<String, List<ExtensionElement>>): Map<
     catch (e: Throwable) {
       LOG.error(e)
       null
-    }
-  }
-}
-
-private fun <K, V1, V2> intersectMaps(first: Map<K, V1>, second: Map<K, V2>): Sequence<Pair<V1, V2>> {
-  // Make sure we iterate the smaller map
-  return if (first.size < second.size) {
-    first.asSequence().mapNotNull { (key, firstValue) ->
-      second[key]?.let { secondValue -> firstValue to secondValue }
-    }
-  }
-  else {
-    second.asSequence().mapNotNull { (key, secondValue) ->
-      first[key]?.let { firstValue -> firstValue to secondValue }
     }
   }
 }

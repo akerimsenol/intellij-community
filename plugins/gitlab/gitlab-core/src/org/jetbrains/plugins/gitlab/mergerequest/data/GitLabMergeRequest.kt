@@ -1,7 +1,12 @@
 // Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gitlab.mergerequest.data
 
-import com.intellij.collaboration.async.*
+import com.intellij.collaboration.async.childScope
+import com.intellij.collaboration.async.computationStateFlow
+import com.intellij.collaboration.async.mapScoped
+import com.intellij.collaboration.async.modelFlow
+import com.intellij.collaboration.async.resultOrErrorFlow
+import com.intellij.collaboration.async.withInitial
 import com.intellij.collaboration.util.CodeReviewDomainEntity
 import com.intellij.collaboration.util.ComputedResult
 import com.intellij.collaboration.util.ResultUtil.runCatchingUser
@@ -12,13 +17,49 @@ import git4idea.changes.GitBranchComparisonResult
 import git4idea.remote.hosting.GitRemoteBranchesUtil
 import git4idea.remote.hosting.changesSignalFlow
 import git4idea.repo.GitRepository
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import org.jetbrains.plugins.gitlab.api.*
-import org.jetbrains.plugins.gitlab.api.dto.*
+import kotlinx.coroutines.withContext
+import org.jetbrains.plugins.gitlab.api.GitLabApi
+import org.jetbrains.plugins.gitlab.api.GitLabProjectCoordinates
+import org.jetbrains.plugins.gitlab.api.GitLabServerMetadata
+import org.jetbrains.plugins.gitlab.api.GitLabVersion
+import org.jetbrains.plugins.gitlab.api.dto.GitLabResourceLabelEventDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabResourceMilestoneEventDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabResourceStateEventDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabReviewerDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabUserDTO
+import org.jetbrains.plugins.gitlab.api.getResultOrThrow
+import org.jetbrains.plugins.gitlab.api.loadUpdatableJsonList
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestDTO
-import org.jetbrains.plugins.gitlab.mergerequest.api.request.*
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.GitLabMergeRequestNewState
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.getMergeRequestLabelEventsUri
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.getMergeRequestMilestoneEventsUri
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.getMergeRequestStateEventsUri
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.loadMergeRequest
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestAccept
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestApprove
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestRebase
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestReviewerRereview
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestSetDraft
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestSetReviewers
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestUnApprove
+import org.jetbrains.plugins.gitlab.mergerequest.api.request.mergeRequestUpdate
 import org.jetbrains.plugins.gitlab.mergerequest.data.loaders.startGitLabRestETagListLoaderIn
 import org.jetbrains.plugins.gitlab.util.GitLabApiRequestName
 import org.jetbrains.plugins.gitlab.util.GitLabProjectMapping
@@ -129,53 +170,53 @@ internal class LoadedGitLabMergeRequest(
     .mapScoped { details -> GitLabMergeRequestChangesImpl(this, api, glMetadata, projectMapping, details) }
     .modelFlow(cs, LOG)
 
-  private val stateEventsHolder =
+  override val stateEvents by lazy {
     startGitLabRestETagListLoaderIn(
       cs,
       getMergeRequestStateEventsUri(glProject, iid),
       { it.id },
 
       requestReloadFlow = mergeRequestReloadRequest.withInitial(Unit),
-      requestRefreshFlow = mergeRequestRefreshRequest.combine(stateEventsRefreshRequest.withInitial(Unit)) { _, _ -> }
+      requestRefreshFlow = mergeRequestRefreshRequest.combine(stateEventsRefreshRequest.withInitial(Unit)) { _, _ -> },
+      shouldTryToLoadAll = true
     ) { uri, eTag ->
-        api.rest.loadUpdatableJsonList<GitLabResourceStateEventDTO>(
-          GitLabApiRequestName.REST_GET_MERGE_REQUEST_STATE_EVENTS, uri, eTag
-        )
-    }
-  override val stateEvents =
-    stateEventsHolder.resultOrErrorFlow.modelFlow(cs, LOG)
+      api.rest.loadUpdatableJsonList<GitLabResourceStateEventDTO>(
+        GitLabApiRequestName.REST_GET_MERGE_REQUEST_STATE_EVENTS, uri, eTag
+      )
+    }.resultOrErrorFlow.modelFlow(cs, LOG)
+  }
 
-  private val labelEventsHolder =
+  override val labelEvents by lazy {
     startGitLabRestETagListLoaderIn(
       cs,
       getMergeRequestLabelEventsUri(glProject, iid),
       { it.id },
 
       requestReloadFlow = mergeRequestReloadRequest.withInitial(Unit),
-      requestRefreshFlow = mergeRequestRefreshRequest
+      requestRefreshFlow = mergeRequestRefreshRequest,
+      shouldTryToLoadAll = true
     ) { uri, eTag ->
-        api.rest.loadUpdatableJsonList<GitLabResourceLabelEventDTO>(
-          GitLabApiRequestName.REST_GET_MERGE_REQUEST_LABEL_EVENTS, uri, eTag
-        )
-    }
-  override val labelEvents =
-    labelEventsHolder.resultOrErrorFlow.modelFlow(cs, LOG)
+      api.rest.loadUpdatableJsonList<GitLabResourceLabelEventDTO>(
+        GitLabApiRequestName.REST_GET_MERGE_REQUEST_LABEL_EVENTS, uri, eTag
+      )
+    }.resultOrErrorFlow.modelFlow(cs, LOG)
+  }
 
-  private val milestoneEventsHolder =
+  override val milestoneEvents by lazy {
     startGitLabRestETagListLoaderIn(
       cs,
       getMergeRequestMilestoneEventsUri(glProject, iid),
       { it.id },
 
       requestReloadFlow = mergeRequestReloadRequest.withInitial(Unit),
-      requestRefreshFlow = mergeRequestRefreshRequest
+      requestRefreshFlow = mergeRequestRefreshRequest,
+      shouldTryToLoadAll = true
     ) { uri, eTag ->
-        api.rest.loadUpdatableJsonList<GitLabResourceMilestoneEventDTO>(
-          GitLabApiRequestName.REST_GET_MERGE_REQUEST_MILESTONE_EVENTS, uri, eTag
-        )
-    }
-  override val milestoneEvents =
-    milestoneEventsHolder.resultOrErrorFlow.modelFlow(cs, LOG)
+      api.rest.loadUpdatableJsonList<GitLabResourceMilestoneEventDTO>(
+        GitLabApiRequestName.REST_GET_MERGE_REQUEST_MILESTONE_EVENTS, uri, eTag
+      )
+    }.resultOrErrorFlow.modelFlow(cs, LOG)
+  }
 
   private val _isLoading: MutableStateFlow<Boolean> = MutableStateFlow(false)
   override val isLoading: SharedFlow<Boolean> = _isLoading.asSharedFlow()
@@ -247,7 +288,6 @@ internal class LoadedGitLabMergeRequest(
   override fun refreshData() {
     cs.launch {
       updateData()
-      startRefreshCycle()
     }
   }
 
@@ -259,20 +299,14 @@ internal class LoadedGitLabMergeRequest(
 
   private suspend fun updateData() {
     mergeRequestRefreshRequest.emit(Unit)
-    discussionsContainer.checkUpdates()
-  }
-
-  private suspend fun startRefreshCycle() {
-    stateEventsHolder.loadAll()
-    labelEventsHolder.loadAll()
-    milestoneEventsHolder.loadAll()
+    discussionsContainer.requestDiscussionsRefresh()
   }
 
   override suspend fun merge(commitMessage: String) {
     withContext(cs.coroutineContext + Dispatchers.IO) {
       runMerge(commitMessage, withSquash = false)
     }
-    discussionsContainer.checkUpdates()
+    discussionsContainer.requestDiscussionsRefresh()
     GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.MERGE)
   }
 
@@ -280,7 +314,7 @@ internal class LoadedGitLabMergeRequest(
     withContext(cs.coroutineContext + Dispatchers.IO) {
       runMerge(commitMessage, withSquash = true)
     }
-    discussionsContainer.checkUpdates()
+    discussionsContainer.requestDiscussionsRefresh()
     GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.SQUASH_MERGE)
   }
 
@@ -288,7 +322,7 @@ internal class LoadedGitLabMergeRequest(
     withContext(cs.coroutineContext + Dispatchers.IO) {
       runRebase()
     }
-    discussionsContainer.checkUpdates()
+    discussionsContainer.requestDiscussionsRefresh()
     GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.REBASE)
   }
 
@@ -342,7 +376,7 @@ internal class LoadedGitLabMergeRequest(
         .getResultOrThrow()
       updateMergeRequestData(updatedMergeRequest)
     }
-    discussionsContainer.checkUpdates()
+    discussionsContainer.requestDiscussionsRefresh()
     GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.POST_REVIEW)
   }
 
@@ -358,7 +392,7 @@ internal class LoadedGitLabMergeRequest(
 
       updateMergeRequestData(updatedMergeRequest)
     }
-    discussionsContainer.checkUpdates()
+    discussionsContainer.requestDiscussionsRefresh()
     GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.SET_REVIEWERS)
   }
 
@@ -370,7 +404,7 @@ internal class LoadedGitLabMergeRequest(
         updateMergeRequestData(updatedMergeRequest)
       }
     }
-    discussionsContainer.checkUpdates()
+    discussionsContainer.requestDiscussionsRefresh()
     GitLabStatistics.logMrActionExecuted(project, GitLabStatistics.MergeRequestAction.REVIEWER_REREVIEW)
   }
 

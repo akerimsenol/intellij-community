@@ -2,7 +2,6 @@
 package com.jetbrains.python.psi.types;
 
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ProcessingContext;
@@ -16,8 +15,17 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 public class PyUnionType implements PyType {
@@ -65,7 +73,10 @@ public class PyUnionType implements PyType {
 
   @Override
   public String getName() {
-    return StringUtil.join(myMembers, t -> t == null ? "Any" : t.getName(), " | ");
+    return myMembers.stream()
+      .sorted(Comparator.comparing(t -> t == null ? "Any" : t.getName(), Comparator.nullsFirst(Comparator.naturalOrder())))
+      .map(t -> t == null ? "Any" : t.getName())
+      .collect(Collectors.joining(" | "));
   }
 
   /**

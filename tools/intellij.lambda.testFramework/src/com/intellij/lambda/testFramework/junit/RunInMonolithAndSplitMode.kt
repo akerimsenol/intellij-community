@@ -15,12 +15,14 @@ import java.lang.annotation.Inherited
 @Retention(AnnotationRetention.RUNTIME)
 @Inherited
 @ExtendWith(
+  TestFactoryLoggerSetter::class,
+  ProjectResetCallback::class,
+  BackgroundLambdaDefaultCallbacks::class,
   StartIdeBeforeEachCallback::class,
   IdeConfigReset::class,
   ConfigureCoroutineCancellationTimeout::class,
   MonolithAndSplitModeTestTemplateProvider::class,
   MonolithAndSplitModeInvocationInterceptor::class,
-  BackgroundLambdaCleanupAfterEach::class,
   IdeWithLambdaParameterResolver::class,
 )
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)

@@ -9,9 +9,6 @@ import com.intellij.diagnostic.CoroutineTracerShim
 import com.intellij.diagnostic.LoadingState
 import com.intellij.ide.plugins.DisabledPluginsState.Companion.invalidate
 import com.intellij.ide.plugins.PluginManagerCore.CORE_ID
-import com.intellij.ide.plugins.PluginManagerCore.DISABLE
-import com.intellij.ide.plugins.PluginManagerCore.EDIT
-import com.intellij.ide.plugins.PluginManagerCore.ENABLE
 import com.intellij.ide.plugins.PluginManagerCore.ULTIMATE_PLUGIN_ID
 import com.intellij.ide.plugins.PluginManagerCore.getPluginSet
 import com.intellij.ide.plugins.PluginManagerCore.isDisabled
@@ -35,10 +32,10 @@ import com.intellij.openapi.util.text.HtmlChunk
 import com.intellij.ui.IconManager
 import com.intellij.ui.PlatformIcons
 import com.intellij.util.PlatformUtils
-import com.intellij.util.containers.Java11Shim
 import com.intellij.util.lang.ZipEntryResolverPool
 import com.intellij.util.system.CpuArch
 import com.intellij.util.system.OS
+import com.intellij.util.text.VersionComparatorUtil
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -52,7 +49,8 @@ import java.awt.GraphicsEnvironment
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.*
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.function.Supplier
@@ -105,10 +103,10 @@ object PluginManagerCore {
   class PluginsMutableState {
     @Volatile
     var nullablePluginSet: PluginSet? = null
-    var pluginLoadingErrors: Map<PluginId, PluginNonLoadReason>? = null
-    val pluginErrors: ArrayList<PluginLoadingError> = ArrayList<PluginLoadingError>()
-    var pluginsToDisable: Set<PluginId>? = null
-    var pluginsToEnable: Set<PluginId>? = null
+    private val pluginNonLoadReasons: MutableMap<PluginId, PluginNonLoadReason> = hashMapOf()
+    private val pluginErrors: ArrayList<PluginLoadingError> = ArrayList<PluginLoadingError>()
+    var pluginsToDisable: List<PluginStateChangeData> = emptyList()
+    var pluginsToEnable: List<PluginStateChangeData> = emptyList()
 
     /**
      * Bundled plugins that were updated.
@@ -121,7 +119,8 @@ object PluginManagerCore {
     var initFuture: Deferred<PluginSet>? = null
 
     @Synchronized
-    fun addPluginLoadingErrors(errors: List<PluginLoadingError>) {
+    fun setErrorsForNotificationReporterAndLogger(errors: List<PluginLoadingError>) {
+      pluginErrors.clear()
       pluginErrors.addAll(errors)
     }
 
@@ -133,12 +132,20 @@ object PluginManagerCore {
     }
 
     @Synchronized
-    fun consumeStartupActionsPluginsToEnableDisable(): Pair<Set<PluginId>, Set<PluginId>> {
-      val toEnable = pluginsToEnable ?: emptySet()
-      val toDisable = pluginsToDisable ?: emptySet()
-      pluginsToEnable = null
-      pluginsToDisable = null
+    fun getStartupActionsPluginsToEnableDisable(): Pair<List<PluginStateChangeData>, List<PluginStateChangeData>> {
+      val toEnable = pluginsToEnable
+      val toDisable = pluginsToDisable
       return toEnable to toDisable
+    }
+
+    fun getPluginNonLoadReason(pluginId: PluginId): PluginNonLoadReason? = pluginNonLoadReasons[pluginId]
+
+    fun clearPluginNonLoadReason(pluginId: PluginId) {
+      pluginNonLoadReasons.remove(pluginId)
+    }
+
+    fun addPluginNonLoadReasons(pluginNonLoadReasons: Map<PluginId, PluginNonLoadReason>) {
+      this.pluginNonLoadReasons.putAll(pluginNonLoadReasons)
     }
   }
 
@@ -321,14 +328,47 @@ object PluginManagerCore {
   }
 
   @Suppress("LoggingSimilarMessage")
-  private fun preparePluginErrors(globalErrors: List<PluginLoadingError>): List<PluginLoadingError> {
-    val pluginLoadingErrors = pluginsState.pluginLoadingErrors ?: emptyMap()
-    if (pluginLoadingErrors.isEmpty() && globalErrors.isEmpty()) {
+  private fun preparePluginErrors(
+    pluginNonLoadReasons: Map<PluginId, PluginNonLoadReason>,
+    descriptorLoadingErrors: List<PluginDescriptorLoadingError>,
+    duplicateModuleMap: Map<PluginId, List<PluginMainDescriptor>>,
+    cycleErrors: List<PluginLoadingError>,
+    initContext: PluginInitializationContext,
+  ): List<PluginLoadingError> {
+    // name shadowing is intended
+    val pluginNonLoadReasons = pluginNonLoadReasons.filterValues {
+      it !is PluginIsMarkedDisabled && !initContext.isPluginDisabled(it.plugin.pluginId)
+    }
+    val globalErrors = ArrayList<PluginLoadingError>().apply {
+      for (descriptorLoadingError in descriptorLoadingErrors) {
+        add(PluginLoadingError(
+          reason = null,
+          htmlMessageSupplier = Supplier {
+            HtmlChunk.text(CoreBundle.message("plugin.loading.error.text.file.contains.invalid.plugin.descriptor",
+                                              PluginUtils.pluginPathToUserString(descriptorLoadingError.path)))
+          },
+          error = descriptorLoadingError.error,
+        ))
+      }
+      for ((key, value) in duplicateModuleMap) {
+        add(PluginLoadingError(
+          reason = null,
+          htmlMessageSupplier = Supplier {
+            HtmlChunk.text(CoreBundle.message("plugin.loading.error.module.declared.by.multiple.plugins",
+                                              key,
+                                              value.joinToString(separator = ("\n  ")) { it.toString() }))
+          },
+          error = null,
+        ))
+      }
+      addAll(cycleErrors)
+    }
+    if (pluginNonLoadReasons.isEmpty() && globalErrors.isEmpty()) {
       return emptyList()
     }
 
     // the log includes all messages, not only those which need to be reported to the user
-    val loadingErrors = pluginLoadingErrors.values
+    val loadingErrors = pluginNonLoadReasons.values
     val logMessage =
       "Problems found loading plugins:\n  " +
       (globalErrors.asSequence().map { it.htmlMessage.toString() } + loadingErrors.asSequence().map { it.logMessage })
@@ -355,12 +395,10 @@ object PluginManagerCore {
   }
 
   @Internal
-  fun getLoadingError(pluginId: PluginId): PluginNonLoadReason? = pluginsState.pluginLoadingErrors!!.get(pluginId)
+  fun getPluginNonLoadReason(pluginId: PluginId): PluginNonLoadReason? = pluginsState.getPluginNonLoadReason(pluginId)
 
   @Internal
-  fun clearLoadingErrorsFor(pluginId: PluginId) {
-    pluginsState.pluginLoadingErrors = pluginsState.pluginLoadingErrors?.minus(pluginId)
-  }
+  fun clearPluginNonLoadReasonFor(pluginId: PluginId): Unit = pluginsState.clearPluginNonLoadReason(pluginId)
 
   @Internal
   fun scheduleDescriptorLoading(coroutineScope: CoroutineScope) {
@@ -382,11 +420,7 @@ object PluginManagerCore {
   ): Deferred<PluginSet> {
     var result = pluginsState.initFuture
     if (result == null) {
-      result = coroutineScope.scheduleLoading(
-        zipPoolDeferred = zipPoolDeferred,
-        mainClassLoaderDeferred = mainClassLoaderDeferred,
-        logDeferred = logDeferred,
-      )
+      result = coroutineScope.scheduleLoading(zipPoolDeferred = zipPoolDeferred, mainClassLoaderDeferred = mainClassLoaderDeferred, logDeferred = logDeferred)
       pluginsState.initFuture = result
     }
     return result
@@ -509,67 +543,123 @@ object PluginManagerCore {
 
   @Internal
   fun initializePlugins(
-    descriptorLoadingErrors: List<PluginLoadingError>,
+    descriptorLoadingErrors: List<PluginDescriptorLoadingError>,
     initContext: PluginInitializationContext,
-    loadingResult: PluginLoadingResult,
+    discoveredPlugins: PluginDescriptorLoadingResult,
     coreLoader: ClassLoader,
     parentActivity: Activity?,
   ): PluginManagerState {
-    val pluginErrorsById = loadingResult.copyPluginErrors()
-    val globalErrors = descriptorLoadingErrors.toMutableList()
-    if (loadingResult.duplicateModuleMap != null) {
-      for ((key, value) in loadingResult.duplicateModuleMap!!) {
-        globalErrors.add(PluginLoadingError(
-          reason = null,
-          htmlMessageSupplier = Supplier {
-            HtmlChunk.text(CoreBundle.message("plugin.loading.error.module.declared.by.multiple.plugins",
-                                              key,
-                                              value.joinToString(separator = ("\n  ")) { it.toString() }))
-          },
-          error = null,
-        ))
+    @Internal
+    data class PluginSelectionData(
+      val pluginsToLoad: List<PluginMainDescriptor>,
+      val pluginNonLoadReasons: MutableMap<PluginId, PluginNonLoadReason>,
+      val incompletePlugins: List<PluginMainDescriptor>,
+      val idMap: Map<PluginId, IdeaPluginDescriptorImpl>,
+      val fullIdMap: Map<PluginId, IdeaPluginDescriptorImpl>,
+      val fullContentModuleIdMap: Map<PluginModuleId, ContentModuleDescriptor>,
+      val duplicateModuleMap: Map<PluginId, List<PluginMainDescriptor>>?,
+      val shadowedBundledIds: MutableSet<PluginId>,
+    )
+    val (pluginsToLoad, pluginNonLoadReasons, incompletePlugins, idMap, fullIdMap, fullContentModuleIdMap, duplicateModuleMap, shadowedBundledIds) =
+      if (System.getProperty("revert.IJPL220159", "false") == "true") {
+        val loadingResult = PluginLoadingResult()
+        loadingResult.initAndAddAll(descriptorLoadingResult = discoveredPlugins, initContext = initContext)
+        val pluginNonLoadReasons = loadingResult.copyPluginNonLoadReasons()
+        val idMap = loadingResult.getIdMap()
+        val fullIdMap = idMap + loadingResult.getIncompleteIdMap() +
+                        loadingResult.getIncompleteIdMap().flatMap { (_, value) ->
+                          value.pluginAliases.map { it to value }
+                        }.toMap()
+        val fullContentModuleIdMap = HashMap<PluginModuleId, ContentModuleDescriptor>()
+        val incompletePlugins = loadingResult.getIncompleteIdMap().values.toList()
+        for (descriptor in incompletePlugins) {
+          descriptor.contentModules.associateByTo(fullContentModuleIdMap) { it.moduleId }
+        }
+        for (descriptor in idMap.values) {
+          descriptor.contentModules.associateByTo(fullContentModuleIdMap) { it.moduleId }
+        }
+        selectPluginsForLoading(
+          descriptors = loadingResult.getPluginsToAttemptLoading(),
+          idMap = idMap,
+          pluginNonLoadReasons = pluginNonLoadReasons,
+          initContext = initContext
+        )
+        PluginSelectionData(
+          pluginsToLoad = loadingResult.getPluginsToAttemptLoading().toList(),
+          pluginNonLoadReasons = pluginNonLoadReasons,
+          incompletePlugins = loadingResult.getIncompleteIdMap().values.toList(),
+          idMap = idMap,
+          fullIdMap = fullIdMap,
+          fullContentModuleIdMap = fullContentModuleIdMap,
+          duplicateModuleMap = loadingResult.duplicateModuleMap,
+          shadowedBundledIds = loadingResult.shadowedBundledIds,
+        )
       }
-    }
-
-    val idMap = loadingResult.getIdMap()
-    val fullIdMap = idMap + loadingResult.getIncompleteIdMap() +
-                    loadingResult.getIncompleteIdMap().flatMap { (_, value) ->
-                      value.pluginAliases.map { it to value }
-                    }.toMap()
-    val fullContentModuleIdMap = HashMap<PluginModuleId, ContentModuleDescriptor>()
-    for (descriptor in loadingResult.getIncompleteIdMap().values) {
-      descriptor.contentModules.associateByTo(fullContentModuleIdMap) { it.moduleId }
-    }
-    for (descriptor in idMap.values) {
-      descriptor.contentModules.associateByTo(fullContentModuleIdMap) { it.moduleId }
-    }
+      else {
+        val excludedFromLoading = IdentityHashMap<PluginMainDescriptor, PluginNonLoadReason>()
+        val pluginsToLoad = initContext.selectPluginsToLoad(discoveredPlugins.discoveredPlugins) { plugin, reason ->
+          excludedFromLoading.put(plugin, reason)
+        }
+        val incompletePlugins = HashMap<PluginId, PluginMainDescriptor>()
+        val shadowedBundledIds = HashSet<PluginId>()
+        for (pluginList in discoveredPlugins.discoveredPlugins) {
+          for (plugin in pluginList.plugins) {
+            val exclusionReason = excludedFromLoading[plugin]
+            if (exclusionReason != null) {
+              plugin.isMarkedForLoading = false
+            }
+            if (pluginsToLoad.resolvePluginId(plugin.pluginId) == null && exclusionReason != null && exclusionReason !is PluginVersionIsSuperseded) {
+              val existing = incompletePlugins[plugin.pluginId]
+              if (existing == null || VersionComparatorUtil.compare(plugin.version, existing.version) > 0) {
+                incompletePlugins[plugin.pluginId] = plugin
+              }
+            }
+            if ((pluginList.source == PluginsSourceContext.Bundled ||
+                 pluginList.source == PluginsSourceContext.ClassPathProvided) && // FIXME checking only Bundled should be sufficient here
+                exclusionReason is PluginVersionIsSuperseded) {
+              shadowedBundledIds.add(plugin.pluginId)
+            }
+          }
+        }
+        val ambiguousPluginSet = AmbiguousPluginSet.build(pluginsToLoad.plugins + incompletePlugins.values)
+        PluginSelectionData(
+          pluginsToLoad = pluginsToLoad.plugins,
+          pluginNonLoadReasons = incompletePlugins.values.associateByTo(mutableMapOf(), { it.pluginId }, { excludedFromLoading[it]!! }),
+          incompletePlugins = incompletePlugins.values.toList(),
+          idMap = pluginsToLoad.buildFullPluginIdMapping(),
+          fullIdMap = ambiguousPluginSet.buildFullPluginIdMapping().mapValues { it.value.first() },
+          fullContentModuleIdMap = ambiguousPluginSet.buildFullContentModuleIdMapping().mapValues { it.value.first() },
+          duplicateModuleMap = null, // conflicts are handled and nonLoadingReasons are set by selectPluginsToLoad
+          shadowedBundledIds = shadowedBundledIds
+        )
+      }
 
     if (initContext.checkEssentialPlugins && !idMap.containsKey(CORE_ID)) {
       throw EssentialPluginMissingException(listOf("$CORE_ID (platform prefix: ${System.getProperty(PlatformUtils.PLATFORM_PREFIX_KEY)})"))
-        .apply { (pluginErrorsById.get(CORE_ID))?.let { addSuppressed(Exception(it.logMessage)) } }
+        .apply { (pluginNonLoadReasons.get(CORE_ID))?.let { addSuppressed(Exception(it.logMessage)) } }
     }
 
     checkThirdPartyPluginsPrivacyConsent(parentActivity, idMap)
 
-    val pluginSetBuilder = PluginSetBuilder(loadingResult.getPluginsToAttemptLoading())
-    selectPluginsForLoading(descriptors = pluginSetBuilder.unsortedPlugins, idMap = idMap, errors = pluginErrorsById, initContext = initContext)
-    pluginSetBuilder.checkPluginCycles(globalErrors)
-    val pluginsToDisable = HashMap<PluginId, String>()
-    val pluginsToEnable = HashMap<PluginId, String>()
+    val pluginSetBuilder = PluginSetBuilder(pluginsToLoad.toSet())
+    val cycleErrors = pluginSetBuilder.checkPluginCycles()
+    val pluginsToDisable = HashMap<PluginId, PluginStateChangeData>()
+    val pluginsToEnable = HashMap<PluginId, PluginStateChangeData>()
     
     fun registerLoadingError(loadingError: PluginNonLoadReason) {
-      pluginErrorsById.put(loadingError.plugin.pluginId, loadingError)
-      pluginsToDisable.put(loadingError.plugin.pluginId, loadingError.plugin.name)
+      pluginNonLoadReasons.put(loadingError.plugin.pluginId, loadingError)
+      pluginsToDisable.put(loadingError.plugin.pluginId, PluginStateChangeData(loadingError.plugin.pluginId, loadingError.plugin.name))
       if (loadingError is PluginDependencyIsDisabled) {
         val disabledDependencyId = loadingError.dependencyId
         if (initContext.isPluginDisabled(disabledDependencyId)) {
-          pluginsToEnable.put(disabledDependencyId, fullIdMap.get(disabledDependencyId)!!.getName())
+          val disabledPlugin = fullIdMap.get(disabledDependencyId)!!
+          pluginsToEnable.put(disabledDependencyId, PluginStateChangeData(disabledPlugin.pluginId, disabledPlugin.name))
         }
       }
     }
 
     val additionalErrors = pluginSetBuilder.computeEnabledModuleMap(
-      incompletePlugins = loadingResult.getIncompleteIdMap().values,
+      incompletePlugins = incompletePlugins,
       initContext = initContext,
       disabler = { descriptor, disabledModuleToProblematicPlugin ->
         val loadingError = pluginSetBuilder.initEnableState(
@@ -578,7 +668,7 @@ object PluginManagerCore {
           fullIdMap = fullIdMap,
           fullContentModuleIdMap = fullContentModuleIdMap,
           isPluginDisabled = initContext::isPluginDisabled,
-          errors = pluginErrorsById,
+          errors = pluginNonLoadReasons,
           disabledModuleToProblematicPlugin = disabledModuleToProblematicPlugin,
         )
         if (loadingError != null) {
@@ -594,21 +684,28 @@ object PluginManagerCore {
       registerLoadingError(loadingError)
     }
 
-    val actions = prepareActions(pluginNamesToDisable = pluginsToDisable.values, pluginNamesToEnable = pluginsToEnable.values)
-    pluginsState.pluginLoadingErrors = pluginErrorsById
-
-    val errorList = preparePluginErrors(globalErrors)
-    if (!errorList.isEmpty()) { // FIXME why actions is not checked here?
-      pluginsState.addPluginLoadingErrors(errorList + actions.map { PluginLoadingError(reason = null, htmlMessageSupplier = it, error = null) })
-    }
+    pluginsState.addPluginNonLoadReasons(pluginNonLoadReasons.filter { it.value !is PluginIsMarkedDisabled })
+    pluginsState.setErrorsForNotificationReporterAndLogger(preparePluginErrors(
+      pluginNonLoadReasons = pluginNonLoadReasons,
+      descriptorLoadingErrors = descriptorLoadingErrors,
+      duplicateModuleMap = duplicateModuleMap ?: emptyMap(),
+      cycleErrors = cycleErrors,
+      initContext = initContext,
+    ))
 
     if (initContext.checkEssentialPlugins) {
-      checkEssentialPluginsAreAvailable(idMap, initContext.essentialPlugins)
+      checkEssentialPluginsAreAvailable(idMap, initContext.essentialPlugins, pluginNonLoadReasons)
     }
 
-    val pluginSet = pluginSetBuilder.createPluginSet(incompletePlugins = loadingResult.getIncompleteIdMap().values)
+    val pluginSet = pluginSetBuilder.createPluginSet(incompletePlugins = incompletePlugins)
     ClassLoaderConfigurator(pluginSet, coreLoader).configure()
-    return PluginManagerState(pluginSet = pluginSet, pluginIdsToDisable = pluginsToDisable.keys, pluginIdsToEnable = pluginsToEnable.keys)
+    return PluginManagerState(
+      pluginSet = pluginSet,
+      pluginToDisable = pluginsToDisable.values.toList(),
+      pluginToEnable = pluginsToEnable.values.toList(),
+      incompletePluginsForLogging = incompletePlugins,
+      shadowedBundledPlugins = shadowedBundledIds
+    )
   }
 
   /**
@@ -624,7 +721,7 @@ object PluginManagerCore {
     activity?.end()
   }
 
-  private fun checkEssentialPluginsAreAvailable(idMap: Map<PluginId, IdeaPluginDescriptorImpl>, essentialPlugins: Set<PluginId>) {
+  private fun checkEssentialPluginsAreAvailable(idMap: Map<PluginId, IdeaPluginDescriptorImpl>, essentialPlugins: Set<PluginId>, pluginNonLoadReasons: Map<PluginId, PluginNonLoadReason>) {
     val corePlugin = idMap.get(CORE_ID)
     if (corePlugin != null) {
       val disabledModulesOfCorePlugin = corePlugin.contentModules.filter { it.moduleLoadingRule.required && !it.isMarkedForLoading }
@@ -639,7 +736,7 @@ object PluginManagerCore {
         if (missing == null) {
           missing = ArrayList()
         }
-        missing.add(id.idString to pluginsState.pluginLoadingErrors?.get(id))
+        missing.add(id.idString to pluginNonLoadReasons[id])
       }
     }
     if (missing != null) {
@@ -715,27 +812,27 @@ object PluginManagerCore {
   }
 
   internal suspend fun initializeAndSetPlugins(
-    descriptorLoadingErrors: List<PluginLoadingError>,
+    descriptorLoadingErrors: List<PluginDescriptorLoadingError>,
     initContext: PluginInitializationContext,
-    loadingResult: PluginLoadingResult,
-  ): PluginSet {
+    discoveredPlugins: PluginDescriptorLoadingResult,
+  ): PluginManagerState {
     val tracerShim = CoroutineTracerShim.coroutineTracer
     return tracerShim.span("plugin initialization") {
       val coreLoader = PluginManagerCore::class.java.classLoader
       val initResult = initializePlugins(
         descriptorLoadingErrors = descriptorLoadingErrors,
         initContext = initContext,
-        loadingResult = loadingResult,
+        discoveredPlugins = discoveredPlugins,
         coreLoader = coreLoader,
         parentActivity = tracerShim.getTraceActivity(),
       )
       val pluginState = pluginsState
-      pluginState.pluginsToDisable = Java11Shim.INSTANCE.copyOf(initResult.pluginIdsToDisable)
-      pluginState.pluginsToEnable = Java11Shim.INSTANCE.copyOf(initResult.pluginIdsToEnable)
-      pluginState.shadowedBundledPlugins = loadingResult.shadowedBundledIds
+      pluginState.pluginsToDisable = initResult.pluginToDisable
+      pluginState.pluginsToEnable = initResult.pluginToEnable
+      pluginState.shadowedBundledPlugins = initResult.shadowedBundledPlugins
       //activity.setDescription("plugin count: ${initResult.pluginSet.enabledPlugins.size}")
       pluginState.nullablePluginSet = initResult.pluginSet
-      initResult.pluginSet
+      initResult
     }
   }
 
@@ -895,7 +992,7 @@ object PluginManagerCore {
   }
 
   @Internal
-  fun consumeStartupActionsPluginsToEnableDisable(): Pair<Set<PluginId>, Set<PluginId>> = pluginsState.consumeStartupActionsPluginsToEnableDisable()
+  fun getStartupActionsPluginsToEnableDisable(): Pair<List<PluginStateChangeData>, List<PluginStateChangeData>> = pluginsState.getStartupActionsPluginsToEnableDisable()
 
   //<editor-fold desc="Deprecated stuff.">
   @Deprecated("The platform code should use [JAVA_PLUGIN_ALIAS_ID] instead, plugins aren't supposed to use this")
@@ -937,7 +1034,7 @@ object PluginManagerCore {
 private fun selectPluginsForLoading(
   descriptors: Collection<PluginMainDescriptor>,
   idMap: Map<PluginId, IdeaPluginDescriptorImpl>,
-  errors: MutableMap<PluginId, PluginNonLoadReason>,
+  pluginNonLoadReasons: MutableMap<PluginId, PluginNonLoadReason>,
   initContext: PluginInitializationContext,
 ) {
   if (initContext.explicitPluginSubsetToLoad != null) {
@@ -972,7 +1069,7 @@ private fun selectPluginsForLoading(
         continue
       }
       descriptor.isMarkedForLoading = false
-      errors.put(descriptor.getPluginId(), PluginLoadingIsDisabledCompletely(descriptor))
+      pluginNonLoadReasons.put(descriptor.getPluginId(), PluginLoadingIsDisabledCompletely(descriptor))
     }
   }
   else {
@@ -1045,34 +1142,6 @@ private fun processAllNonOptionalDependencies(
     }
   }
   return true
-}
-
-private fun prepareActions(pluginNamesToDisable: Collection<String>, pluginNamesToEnable: Collection<String>): List<Supplier<HtmlChunk>> {
-  if (pluginNamesToDisable.isEmpty()) {
-    return emptyList()
-  }
-
-  val actions = ArrayList<Supplier<HtmlChunk>>()
-  val pluginNameToDisable = pluginNamesToDisable.singleOrNull()
-  val disableMessage = if (pluginNameToDisable != null) {
-    CoreBundle.message("link.text.disable.plugin", pluginNameToDisable)
-  }
-  else {
-    CoreBundle.message("link.text.disable.not.loaded.plugins")
-  }
-  actions.add(Supplier<HtmlChunk> { HtmlChunk.link(DISABLE, disableMessage) })
-  if (!pluginNamesToEnable.isEmpty()) {
-    val pluginNameToEnable = pluginNamesToEnable.singleOrNull()
-    val enableMessage = if (pluginNameToEnable != null) {
-      CoreBundle.message("link.text.enable.plugin", pluginNameToEnable)
-    }
-    else {
-      CoreBundle.message("link.text.enable.all.necessary.plugins")
-    }
-    actions.add(Supplier<HtmlChunk> { HtmlChunk.link(ENABLE, enableMessage) })
-  }
-  actions.add(Supplier<HtmlChunk> { HtmlChunk.link(EDIT, CoreBundle.message("link.text.open.plugin.manager")) })
-  return actions
 }
 
 @Internal

@@ -7,7 +7,11 @@ import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.util.io.IoTestUtil
-import com.intellij.platform.plugins.parser.impl.*
+import com.intellij.platform.pluginSystem.parser.impl.LoadedXIncludeReference
+import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorBuilder
+import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorFromXmlStreamConsumer
+import com.intellij.platform.pluginSystem.parser.impl.PluginDescriptorReaderContext
+import com.intellij.platform.pluginSystem.parser.impl.consume
 import com.intellij.platform.runtime.product.ProductMode
 import com.intellij.platform.testFramework.loadDescriptorInTest
 import com.intellij.testFramework.PlatformTestUtil
@@ -395,16 +399,13 @@ class PluginManagerTest {
         descriptor.jarFiles = emptyList()
       }
       loadingContext.close()
-      val result = PluginLoadingResult()
-      val pluginList = DiscoveredPluginsList(plugins, if (isBundled) PluginsSourceContext.Bundled else PluginsSourceContext.Custom)
-      result.initAndAddAll(
-        descriptorLoadingResult = PluginDescriptorLoadingResult.build(listOf(pluginList)),
-        initContext = initContext
+      val discoveredPlugins = PluginDescriptorLoadingResult.build(
+        listOf(DiscoveredPluginsList(plugins, if (isBundled) PluginsSourceContext.Bundled else PluginsSourceContext.Custom))
       )
       return PluginManagerCore.initializePlugins(
         descriptorLoadingErrors = loadingContext.copyDescriptorLoadingErrors(),
         initContext = initContext,
-        loadingResult = result,
+        discoveredPlugins = discoveredPlugins,
         coreLoader = PluginManagerTest::class.java.getClassLoader(),
         parentActivity = null
       )

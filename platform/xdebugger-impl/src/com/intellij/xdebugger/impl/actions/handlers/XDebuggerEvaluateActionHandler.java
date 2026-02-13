@@ -35,13 +35,15 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.concurrency.Promises;
 
-import java.awt.*;
+import java.awt.Component;
+import java.awt.KeyboardFocusManager;
+import java.awt.Window;
 
 import static com.intellij.xdebugger.impl.actions.handlers.XDebuggerCustomEvaluateHandlerKt.getAvailableCustomEvaluateHandler;
 import static com.intellij.xdebugger.impl.actions.handlers.XDebuggerCustomEvaluateHandlerKt.showCustomEvaluateDialog;
 
 @ApiStatus.Internal
-public class XDebuggerEvaluateActionHandler extends XDebuggerActionHandler {
+public class XDebuggerEvaluateActionHandler extends XDebuggerSplitActionHandler {
   @Override
   public void perform(@NotNull Project project, @NotNull AnActionEvent event) {
     XDebuggerCustomEvaluateHandler customHandler = getAvailableCustomEvaluateHandler(project, event);

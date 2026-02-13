@@ -81,7 +81,6 @@ internal class WhatsNewStatus {
 }
 
 internal class WhatsNewShowOnStartCheckService(private val environment: WhatsNewEnvironmentAccessor) : ProjectActivity {
-  @Suppress("unused") // used by the component container
   constructor() : this(WhatsNewEnvironmentAccessorImpl())
 
   private val wasStarted = AtomicBoolean(false)

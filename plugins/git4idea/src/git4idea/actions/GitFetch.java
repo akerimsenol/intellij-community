@@ -44,7 +44,8 @@ public class GitFetch extends DumbAwareAction {
 
   @RequiresEdt
   protected void onFetchFinished(@NotNull Project project, @NotNull GitFetchResult result) {
-    GitBranchIncomingOutgoingManager.getInstance(project).forceUpdateBranches(() -> ActivityTracker.getInstance().inc());
+    ActivityTracker.getInstance().inc();
+    GitBranchIncomingOutgoingManager.getInstance(project).updateAfterFetch();
     result.showNotification();
   }
 

@@ -12,7 +12,7 @@ interface ProcessOutputApi {
       EP_NAME.extensionList.firstOrNull()
   }
 
-  fun specifyAdditionalMessageToUser(project: Project, logId: Int, text: @Nls String)
+  fun specifyAdditionalInfo(project: Project, logId: Int, message: @Nls String?, isCritical: Boolean)
 
   fun tryOpenLogInToolWindow(project: Project, logId: Int): Boolean
 }

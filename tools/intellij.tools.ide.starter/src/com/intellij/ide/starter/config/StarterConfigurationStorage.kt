@@ -2,6 +2,7 @@ package com.intellij.ide.starter.config
 
 import com.intellij.ide.starter.ci.CIServer
 import com.intellij.ide.starter.models.SystemBind
+import com.intellij.ide.starter.runner.DevBuildServerRunner
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -43,7 +44,8 @@ val starterConfigurationStorageDefaults = mapOf<String, String>(
 
 fun ConfigurationStorage.Companion.useLatestDownloadedIdeBuild() = instance().getBoolean(ENV_USE_LATEST_DOWNLOADED_IDE_BUILD)
 
-fun ConfigurationStorage.Companion.useInstaller(): Boolean = instance().getBoolean(ENV_JUNIT_RUNNER_USE_INSTALLER)
+// installer is used by default when intellij.tools.ide.starter.build.server is not available -> DevBuildServerRunner.instance.isDevBuildSupported() == false (e.g. for clients)
+fun ConfigurationStorage.Companion.useInstaller(): Boolean = instance().getOrDefault(ENV_JUNIT_RUNNER_USE_INSTALLER, DevBuildServerRunner.instance.isDevBuildSupported().not().toString()).toBoolean()
 fun ConfigurationStorage.Companion.useInstaller(value: Boolean) = instance().put(ENV_JUNIT_RUNNER_USE_INSTALLER, value)
 
 fun ConfigurationStorage.Companion.useDockerContainer(): Boolean = instance().getBoolean(ENV_USE_DOCKER_CONTAINER)

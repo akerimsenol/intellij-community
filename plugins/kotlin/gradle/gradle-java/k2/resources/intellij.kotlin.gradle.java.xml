@@ -2,6 +2,7 @@
 
   <dependencies>
     <module name="kotlin.gradle.gradle-java"/>
+    <plugin id="org.jetbrains.plugins.gradle"/>
     <plugin id="com.intellij.modules.kotlin.k2"/>
   </dependencies>
 </idea-plugin>

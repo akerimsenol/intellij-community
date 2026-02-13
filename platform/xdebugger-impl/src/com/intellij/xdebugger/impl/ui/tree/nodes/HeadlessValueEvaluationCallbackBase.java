@@ -10,12 +10,12 @@ import com.intellij.util.Alarm;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.xdebugger.XDebuggerBundle;
 import com.intellij.xdebugger.frame.XFullValueEvaluator;
-import com.intellij.xdebugger.impl.XDebuggerManagerImpl;
+import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.awt.*;
+import java.awt.Font;
 
 @ApiStatus.Internal
 public class HeadlessValueEvaluationCallbackBase implements XFullValueEvaluator.XFullValueEvaluationCallback {
@@ -44,7 +44,7 @@ public class HeadlessValueEvaluationCallbackBase implements XFullValueEvaluator.
   public void errorOccurred(@NotNull String errorMessage) {
     try {
       String message = XDebuggerBundle.message("load.value.task.error", errorMessage);
-      XDebuggerManagerImpl.getNotificationGroup().createNotification(message, NotificationType.ERROR).notify(myProject);
+      DebuggerUIUtil.getNotificationGroup().createNotification(message, NotificationType.ERROR).notify(myProject);
     }
     finally {
       evaluationComplete(errorMessage);

@@ -22,7 +22,11 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -41,12 +45,21 @@ import java.util.function.Function;
  * Instead of creating the commands directly, it's preferred to use static methods in this class to create individual commands.
  * Especially take a look at {@link #psiUpdate} methods which are helpful in most of the cases.
  *
- * @see com.intellij.openapi.command.CommandProcessor CommandProcessor
+ * <h4>Relation to CommandProcessor</h4>
+ * There are also {@link com.intellij.openapi.command.CommandProcessor CommandProcessor} commands,
+ * which are another kind of commands, and they're only very loosely related to ModCommands.
+ * <p>
+ * A ModCommand does not do anything by itself (it may be not executed at all), and it allows only a limited set of actions.
+ * <p>
+ * Meanwhile, a CommandProcessor command is executed immediately in a write action and can contain any custom modifications (e.g., changing arbitrary IDE settings).
+ *
+ * @see ModCommandAction
+ * @see ModCommandExecutor
  */
 public sealed interface ModCommand
   permits ModChooseAction, ModCompositeCommand, ModCopyToClipboard, ModCreateFile, ModDeleteFile, ModDisplayMessage, ModEditOptions,
-          ModHighlight, ModMoveFile, ModNavigate, ModNothing, ModOpenUrl, ModRegisterTabOut, ModShowConflicts, ModStartRename,
-          ModStartTemplate, ModUpdateFileText, ModUpdateReferences, ModUpdateSystemOptions {
+          ModHighlight, ModLaunchEditorAction, ModMoveFile, ModNavigate, ModNothing, ModOpenUrl, ModRegisterTabOut, ModShowConflicts,
+          ModStartRename, ModStartTemplate, ModUpdateFileText, ModUpdateReferences, ModUpdateSystemOptions {
 
   /**
    * @return true if the command does nothing

@@ -5,18 +5,41 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.jps.dependency.*;
+import org.jetbrains.jps.dependency.BackDependencyIndex;
+import org.jetbrains.jps.dependency.Delta;
+import org.jetbrains.jps.dependency.DifferentiateContext;
+import org.jetbrains.jps.dependency.Graph;
+import org.jetbrains.jps.dependency.Node;
+import org.jetbrains.jps.dependency.NodeSource;
+import org.jetbrains.jps.dependency.ReferenceID;
 import org.jetbrains.jps.dependency.impl.Containers;
 import org.jetbrains.jps.util.Iterators;
 import org.jetbrains.jps.util.Pair;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-import static org.jetbrains.jps.util.Iterators.*;
+import static org.jetbrains.jps.util.Iterators.collect;
+import static org.jetbrains.jps.util.Iterators.contains;
+import static org.jetbrains.jps.util.Iterators.filter;
+import static org.jetbrains.jps.util.Iterators.find;
+import static org.jetbrains.jps.util.Iterators.flat;
+import static org.jetbrains.jps.util.Iterators.isEmpty;
+import static org.jetbrains.jps.util.Iterators.map;
+import static org.jetbrains.jps.util.Iterators.recurse;
+import static org.jetbrains.jps.util.Iterators.recurseDepth;
+import static org.jetbrains.jps.util.Iterators.unique;
 
 /**
  * This class provides commonly used graph traversal methods.
@@ -39,7 +62,7 @@ public final class Utils {
    * @param isDelta false, if new nodes in Delta should be taken into account, false otherwise
    */
   public Utils(@NotNull DifferentiateContext context, boolean isDelta) {
-    this(context.getGraph(), isDelta? context.getDelta() : null, context.getParams().affectionFilter(), context::isDeleted);
+    this(context.getGraph(), isDelta? context.getDelta() : null, context.getParams().scopeFilter(), context::isDeleted);
   }
 
   /**
@@ -48,7 +71,7 @@ public final class Utils {
    * @param sourceFilter NodeSource filter limiting the scope of traversal. Usually this is used to limit the sources set to some scope defined by some external layout, (i.e. a module structure)
    */
   public Utils(@NotNull Graph graph, @NotNull Predicate<? super NodeSource> sourceFilter) {
-    this(graph, null, sourceFilter, id -> false);
+    this(graph, null, sourceFilter, __-> false);
   }
 
   /**
@@ -231,7 +254,7 @@ public final class Utils {
   }
 
   public Set<JvmNodeReferenceID> collectSubclassesWithoutField(JvmNodeReferenceID classId, JvmField field) {
-    return collectSubclassesWithoutMember(classId, f -> Objects.equals(field.getName(), f.getName()), JvmClass::getFields);
+    return collectSubclassesWithoutMember(classId, field::isSame, JvmClass::getFields);
   }
 
   public Set<JvmNodeReferenceID> collectSubclassesWithoutMethod(JvmNodeReferenceID classId, JvmMethod method) {
@@ -436,7 +459,7 @@ public final class Utils {
     return Boolean.FALSE;
   }
 
-  private static <K, V> Function<K, V> cachingFunction(Function<K, V> f) {
+  public static <K, V> Function<K, V> cachingFunction(Function<K, V> f) {
     Map<K, V> cache = new HashMap<>();
     return k -> cache.computeIfAbsent(k, f);
   }

@@ -17,12 +17,15 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.python.community.execService.impl.ExecLoggerService
 import com.intellij.python.community.execService.impl.LoggedProcess
 import com.intellij.python.community.execService.impl.LoggedProcessLine
+import com.intellij.python.processOutput.ProcessBinaryFileName
+import com.intellij.python.processOutput.ProcessIcon
 import com.intellij.python.processOutput.impl.ProcessOutputBundle.message
 import com.intellij.python.processOutput.impl.ui.components.FilterItem
 import com.intellij.python.processOutput.impl.ui.toggle
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.jetbrains.python.NON_INTERACTIVE_ROOT_TRACE_CONTEXT
 import com.jetbrains.python.TraceContext
+import java.util.WeakHashMap
 import kotlin.collections.minus
 import kotlin.collections.plus
 import kotlin.time.Duration.Companion.milliseconds
@@ -42,7 +45,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jetbrains.jewel.foundation.lazy.SelectableLazyListState
@@ -72,7 +74,7 @@ internal interface ProcessOutputController {
     fun toggleOutputFilter(filter: OutputFilter)
     fun toggleProcessInfo()
     fun toggleProcessOutput()
-    fun specifyAdditionalMessageToUser(logId: Int, message: @Nls String)
+    fun specifyAdditionalInfo(logId: Int, message: @Nls String?, isCritical: Boolean)
     fun copyOutputToClipboard(loggedProcess: LoggedProcess)
     fun copyOutputTagAtIndexToClipboard(loggedProcess: LoggedProcess, fromIndex: Int)
     fun copyOutputExitInfoToClipboard(loggedProcess: LoggedProcess)
@@ -109,6 +111,7 @@ sealed interface TreeNode {
 
     data class Process(
         val process: LoggedProcess,
+        val icon: ProcessIcon?,
     ) : TreeNode
 }
 
@@ -133,11 +136,19 @@ class ProcessOutputControllerService(
     private val project: Project,
     private val coroutineScope: CoroutineScope,
 ) : ProcessOutputController {
+    private val shouldScrollToTop = MutableStateFlow(false)
     internal val loggedProcesses: StateFlow<List<LoggedProcess>> = run {
         var processList = listOf<LoggedProcess>()
         ApplicationManager.getApplication().service<ExecLoggerService>()
             .processes
             .map {
+                // If a new item was added while the process tree is fully scrolled to top, we need
+                // to manually scroll all the way to top once a new item is added to the list state,
+                // as it is not done automatically.
+                if (!processTreeUiState.treeState.canScrollBackward) {
+                    shouldScrollToTop.value = true
+                }
+
                 processList = processList + it
 
                 if (processList.size > ProcessOutputControllerServiceLimits.MAX_PROCESSES) {
@@ -155,7 +166,7 @@ class ProcessOutputControllerService(
                 processList
             }
             .stateIn(
-                coroutineScope + Dispatchers.EDT,
+                coroutineScope,
                 SharingStarted.Eagerly,
                 emptyList(),
             )
@@ -189,6 +200,10 @@ class ProcessOutputControllerService(
         isOutputExpanded = processOutputOutputExpanded,
         lazyListState = LazyListState(),
     )
+
+    private val iconMapping = ProcessOutputIconMappingData.mapping
+    private val iconMatchers = ProcessOutputIconMappingData.matchers
+    private val iconCache = WeakHashMap<LoggedProcess, ProcessIcon>()
 
     init {
         collectSearchStats()
@@ -237,6 +252,7 @@ class ProcessOutputControllerService(
                     processTreeUiState.selectableLazyListState.lazyListState.scrollToItem(0)
                 }
             }
+
             TreeFilter.ShowTime ->
                 ProcessOutputUsageCollector.treeFilterTimeToggled(
                     processTreeFilters.contains(TreeFilter.ShowTime),
@@ -394,15 +410,13 @@ class ProcessOutputControllerService(
         return true
     }
 
-    override fun specifyAdditionalMessageToUser(logId: Int, @Nls message: String) {
-        val trimmed = message.trim()
-
-        if (trimmed.isEmpty()) {
-            return
-        }
-
+    override fun specifyAdditionalInfo(logId: Int, @Nls message: String?, isCritical: Boolean) {
         loggedProcesses.value.find { it.id == logId }?.exitInfo?.also { exitInfo ->
-            exitInfo.value = exitInfo.value?.copy(additionalMessageToUser = message)
+            @Suppress("HardCodedStringLiteral")
+            exitInfo.value = exitInfo.value?.copy(
+                additionalMessageToUser = message?.trim(),
+                isCritical = isCritical,
+            )
         }
     }
 
@@ -434,6 +448,15 @@ class ProcessOutputControllerService(
                     list
                         .filter { it.traceContext == NON_INTERACTIVE_ROOT_TRACE_CONTEXT }
                         .forEach { process ->
+                            val exitInfo = process.exitInfo.value
+
+                            if (exitInfo != null) {
+                                if (exitInfo.exitValue != 0) {
+                                    backgroundErrorProcesses.value += process.id
+                                }
+                                return@forEach
+                            }
+
                             backgroundObservingCoroutines +=
                                 launch(CoroutineName(CoroutineNames.EXIT_INFO_COLLECTOR)) {
                                     process.exitInfo.collect {
@@ -445,6 +468,7 @@ class ProcessOutputControllerService(
                                         }
                                     }
                                 }
+
                         }
                 }
         }
@@ -469,7 +493,7 @@ class ProcessOutputControllerService(
             if (!filters.contains(TreeFilter.ShowBackgroundProcesses)) {
                 filteredProcesses = filteredProcesses.filter {
                     it.traceContext != NON_INTERACTIVE_ROOT_TRACE_CONTEXT
-                        || backgroundErrorProcesses.contains(it.id)
+                            || backgroundErrorProcesses.contains(it.id)
                 }
             }
 
@@ -513,7 +537,10 @@ class ProcessOutputControllerService(
                             buildNodeTree(children)
                         }
                     } else if (process != null) {
-                        addLeaf(TreeNode.Process(process), process)
+                        addLeaf(
+                            TreeNode.Process(process, resolveProcessIcon(process)),
+                            process,
+                        )
                     }
                 }
             }
@@ -530,38 +557,49 @@ class ProcessOutputControllerService(
         }.launchIn(coroutineScope)
     }
 
-    @OptIn(FlowPreview::class)
     private fun ensureProcessTreeScroll() {
         coroutineScope.launch(Dispatchers.EDT) {
-            var prevCanScrollBackwards = false
-            var prevLastItem: Any? = null
-
             combine(
-                snapshotFlow { processTreeUiState.treeState.canScrollBackward },
-                loggedProcesses,
+                snapshotFlow { processTreeUiState.selectableLazyListState.canScrollBackward },
+                shouldScrollToTop,
             ) { canScrollBackwards, processes -> canScrollBackwards to processes }
-                .debounce(100.milliseconds)
-                .collect { (canScrollBackwards, processes) ->
-                    val lastItem = processes.lastOrNull()
-
-                    // scroll to the top if an item was added when the list tree fully scrolled to
-                    // the top
-                    if (canScrollBackwards && !prevCanScrollBackwards && lastItem != prevLastItem) {
+                .collect { (canScrollBackwards, shouldScrollToTopValue) ->
+                    if (canScrollBackwards && shouldScrollToTopValue) {
+                        shouldScrollToTop.value = false
                         processTreeUiState.selectableLazyListState.lazyListState.scrollToItem(0)
-                    } else {
-                        prevCanScrollBackwards = canScrollBackwards
                     }
-
-                    prevLastItem = lastItem
                 }
         }
+    }
+
+    private fun resolveProcessIcon(loggedProcess: LoggedProcess): ProcessIcon? {
+        iconCache[loggedProcess]?.also {
+            return it
+        }
+
+        val exe = loggedProcess.exe.parts.lastOrNull() ?: return null
+        val exeWithoutExt = exe.substringBeforeLast('.')
+
+        iconMapping[ProcessBinaryFileName(exeWithoutExt)]?.also {
+            iconCache[loggedProcess] = it
+            return it
+        }
+
+        for (matcher in iconMatchers) {
+            if (matcher.matcher(ProcessBinaryFileName(exeWithoutExt))) {
+                iconCache[loggedProcess] = matcher.icon
+                return matcher.icon
+            }
+        }
+
+        return null
     }
 }
 
 internal object Tag {
-    const val ERROR = "error"
-    const val OUTPUT = "output"
-    const val EXIT = "exit"
+    val ERROR = message("process.output.output.tag.stdout")
+    val OUTPUT = message("process.output.output.tag.stderr")
+    val EXIT = message("process.output.output.tag.exit")
 
     val maxLength: Int =
         Tag::class.java.declaredFields

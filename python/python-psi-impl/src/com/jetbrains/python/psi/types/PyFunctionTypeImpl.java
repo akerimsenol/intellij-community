@@ -5,7 +5,14 @@ import com.intellij.psi.PsiElement;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.containers.ContainerUtil;
-import com.jetbrains.python.psi.*;
+import com.jetbrains.python.psi.AccessDirection;
+import com.jetbrains.python.psi.PyCallSiteExpression;
+import com.jetbrains.python.psi.PyCallable;
+import com.jetbrains.python.psi.PyExpression;
+import com.jetbrains.python.psi.PyNamedParameter;
+import com.jetbrains.python.psi.PyParameter;
+import com.jetbrains.python.psi.PyReferenceExpression;
+import com.jetbrains.python.psi.PyUtil;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
 import com.jetbrains.python.psi.resolve.RatedResolveResult;
 import org.jetbrains.annotations.NotNull;
@@ -67,6 +74,12 @@ public class PyFunctionTypeImpl implements PyFunctionType {
   }
 
   @Override
+  public @Nullable PyCallableParameterVariadicType getParametersType(@NotNull TypeEvalContext context) {
+    List<PyCallableParameter> parameters = ContainerUtil.notNullize(getParameters(context));
+    return new PyCallableParameterListTypeImpl(parameters);
+  }
+
+  @Override
   public @Nullable List<? extends RatedResolveResult> resolveMember(@NotNull String name,
                                                                     @Nullable PyExpression location,
                                                                     @NotNull AccessDirection direction,
@@ -82,11 +95,6 @@ public class PyFunctionTypeImpl implements PyFunctionType {
     PyExpression callee = location instanceof PyReferenceExpression re ? re.getQualifier() : null;
     PyClassType delegate = PyUtil.selectCallableTypeRuntimeClass(this, callee, typeEvalContext);
     return delegate != null ? delegate.getCompletionVariants(completionPrefix, location, context) : ArrayUtilRt.EMPTY_OBJECT_ARRAY;
-  }
-
-  @Override
-  public String getName() {
-    return "function";
   }
 
   @Override
@@ -111,6 +119,11 @@ public class PyFunctionTypeImpl implements PyFunctionType {
       return new PyFunctionTypeImpl(myCallable, ContainerUtil.subList(parameters, 1));
     }
     return this;
+  }
+
+  @Override
+  public String toString() {
+    return "PyFunctionType: " + getName();
   }
 
   @Override

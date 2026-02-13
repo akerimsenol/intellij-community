@@ -16,17 +16,31 @@ sealed interface RpcCompletionResponseEvent {
    */
   @Serializable
   data class NewItems(
-    val newItems: List<RpcCompletionItem>,
+    val newItems: List<RpcCompletionItem> = emptyList(),
     val completionArrangement: RpcCompletionArrangement,
-  ) : RpcCompletionResponseEvent
+  ) : RpcCompletionResponseEvent {
+    override fun toString(): String = buildToString("NewItems") {
+      fieldWithEmptyDefault("newItems", newItems)
+      field("completionArrangement", completionArrangement)
+    }
+  }
 
   /**
    * This event is sent when all items are already emitted,
-   * but the prefix changed without completion restaring, and we need to re-sort items.
+   * but the prefix changed without completion restarting, and we need to re-sort items.
    */
   @Serializable
   data class NewArrangement(
     val completionArrangement: RpcCompletionArrangement,
+  ) : RpcCompletionResponseEvent {
+    override fun toString(): String = buildToString("NewArrangement") {
+      field("completionArrangement", completionArrangement)
+    }
+  }
+
+  @Serializable
+  data class ExpensivePresentations(
+    val presentations: List<RpcCompletionExpensivePresentation>
   ) : RpcCompletionResponseEvent
 
   /**
@@ -38,19 +52,33 @@ sealed interface RpcCompletionResponseEvent {
   object CompletionItemsFinished : RpcCompletionResponseEvent
 
   /**
+   * This event is sent when the backend decides to abort completion.
+   * Can be sent only before [NewItems] event.
+   */
+  @Serializable
+  object SkipCompletion: RpcCompletionResponseEvent
+  /**
    * This event is sent when the completion session registers a new advertisement.
    */
   @Serializable
   class Advertisement(
     val message: @NlsContexts.PopupAdvertisement String,
     val icon: IconId? = null,
-  ) : RpcCompletionResponseEvent
+  ) : RpcCompletionResponseEvent {
+    override fun toString(): String = buildToString("Advertisement") {
+      field("message", message)
+      fieldWithNullDefault("icon", icon)
+    }
+  }
 
   @Serializable
   data class AddWatchedPrefix(
-    val offset: Int,
-    val condition: RpcPrefixCondition,
-  ) : RpcCompletionResponseEvent
+      val condition: RpcRestartPrefixCondition,
+  ) : RpcCompletionResponseEvent {
+    override fun toString(): String = buildToString("AddWatchedPrefix") {
+      field("condition", condition)
+    }
+  }
 
   /**
    * The last event of the completion session.

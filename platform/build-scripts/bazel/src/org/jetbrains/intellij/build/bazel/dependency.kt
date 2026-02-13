@@ -61,12 +61,12 @@ internal fun generateDeps(
   val runtimeDeps = mutableListOf<BazelLabel>()
   val provided = mutableListOf<BazelLabel>()
 
-  if (isTest) {
+  if (isTest) {  // test always depends on production
     if (hasSources && module.sources.isNotEmpty()) {
       // associates also is a dependency
       associates.add(BazelLabel(":${module.targetName}", module))
     }
-    else if (module.sources.isNotEmpty() || module.resources.isNotEmpty()) {
+    else {
       runtimeDeps.add(BazelLabel(":${module.targetName}", module))
     }
   }
@@ -149,7 +149,7 @@ internal fun generateDeps(
             targetName = targetName,
             container = libraryContainer,
             jpsName = jpsLibrary.name,
-            moduleLibraryModuleName = null,
+            moduleLibraryModuleName = moduleLibraryModuleName,
           )
           context.addLocalLibrary(
             lib = LocalLibrary(
@@ -185,13 +185,21 @@ internal fun generateDeps(
           val isCommunityLib = firstFile.startsWith(context.communityRoot)
           val libraryContainer = context.getLibraryContainer(isCommunityLib)
 
+          val isModuleLibrary = element.libraryReference.parentReference is JpsModuleReference
           val targetName = if (underKotlinSnapshotLibRoot(firstFile, communityRoot = context.communityRoot)) {
             // name the same way as a maven library, so there will be minimal changes
             // migrating from kotlin from maven to kotlin from a snapshot
             escapeBazelLabel(jpsLibrary.name)
           }
+          else if (isModuleLibrary) {
+            val moduleRef = element.libraryReference.parentReference as JpsModuleReference
+            val name = jpsLibrary.name.takeIf { !it.startsWith("#") && it.isNotEmpty() } ?: firstFile.nameWithoutExtension
+            camelToSnakeCase(escapeBazelLabel("${moduleRef.moduleName.removePrefix("intellij.")}-${name}"))
+          }
           else {
-            camelToSnakeCase(escapeBazelLabel(firstFile.nameWithoutExtension))
+            // name the same way as the project library,
+            // otherwise hibernate-3.6.10 and hibernate-4.1.3 will use the same identity dom4j-1-6-1 thus only one of them will be added to projectLibraries
+            camelToSnakeCase(escapeBazelLabel(jpsLibrary.name))
           }
 
           val libraryTarget = LibraryTarget(
@@ -344,12 +352,12 @@ internal fun generateDeps(
     }
     else if (it.name.startsWith("rpc-compiler-plugin-") && it.name.endsWith(".jar")) {
       if (module.module.name == "fleet.rpc") {  // other modules use exported_compiler_plugins
-        plugins.add("@lib//:rpc-plugin")
+        plugins.add("@community//fleet/compiler-plugins/rpc:rpc-plugin")
       }
     }
     else if (it.name.startsWith("noria-compiler-plugin-") && it.name.endsWith(".jar")) {
       if (module.module.name == "fleet.noria.cells") {
-        plugins.add("@lib//:noria-plugin")
+        plugins.add("@community//fleet/compiler-plugins/noria:noria-plugin")
       }
     }
   }
@@ -470,7 +478,7 @@ private fun addDep(
   isExported: Boolean,
 ) {
   if (isTest) {
-    val hasProductionDependentModule = dependentModule.sources.isNotEmpty() || dependentModule.resources.isNotEmpty()
+    val hasProductionDependentModule = true  // test always depends on production, skip runtime dependencies
     when (scope) {
       JpsJavaDependencyScope.COMPILE -> {
         if (hasSources) {

@@ -129,27 +129,11 @@ object IdeProductImp : IdeProduct {
     fullName = "Rider"
   )
 
-  /** Writerside */
-  override val WRS = IdeInfo(
-    productCode = "WRS",
-    platformPrefix = "Writerside",
-    executableFileName = "writerside",
-    fullName = "Writerside"
-  )
-
   /** Gateway */
   override val GW = IdeInfo(
     productCode = "GW",
     platformPrefix = "Gateway",
     executableFileName = "gateway",
     fullName = "Gateway"
-  )
-
-  /** Git Client */
-  override val GIG: IdeInfo = IdeInfo(
-    productCode = "GIG",
-    platformPrefix = "GitClient",
-    executableFileName = "gitClient",
-    fullName = "GitClient"
   )
 }

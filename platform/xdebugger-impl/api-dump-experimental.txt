@@ -207,7 +207,7 @@ com.intellij.xdebugger.impl.ui.XValueTextProvider
 - f:getSelectedNodes(com.intellij.openapi.actionSystem.DataContext):java.util.List
 - f:getSelectedValue(com.intellij.openapi.actionSystem.DataContext):com.intellij.xdebugger.frame.XValue
 *a:com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueSplitActionBase
-- com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueActionBase
+- com.intellij.xdebugger.impl.ui.tree.actions.AbstractXFetchValueAction
 - <init>():V
 f:com.intellij.xdebugger.impl.ui.tree.nodes.XValuePresentationUtil
 - *s:renderName(java.lang.String,I,java.util.function.Consumer):V

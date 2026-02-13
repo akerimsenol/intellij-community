@@ -26,7 +26,6 @@ import com.intellij.util.IconUtil
 import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.intellij.xdebugger.impl.XDebuggerUtilImpl
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 import org.jetbrains.annotations.ApiStatus
 import java.awt.Cursor
@@ -188,7 +187,7 @@ internal class InlineBreakpointInlayRenderer(
       }
       ClickAction.REMOVE -> {
         val proxy = lightBreakpoint!!.breakpointProxy!!
-        XDebuggerUtilImpl.removeBreakpointWithConfirmation(proxy)
+        XBreakpointUIUtil.removeBreakpointWithConfirmation(proxy)
       }
     }
   }

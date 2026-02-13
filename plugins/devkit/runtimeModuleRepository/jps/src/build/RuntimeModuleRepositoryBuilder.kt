@@ -6,6 +6,7 @@ import com.intellij.devkit.runtimeModuleRepository.generator.RuntimeModuleReposi
 import com.intellij.devkit.runtimeModuleRepository.generator.RuntimeModuleRepositoryValidator
 import com.intellij.devkit.runtimeModuleRepository.jps.impl.DevkitRuntimeModuleRepositoryJpsBundle
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.platform.runtime.repository.RuntimeModuleId
 import com.intellij.platform.runtime.repository.serialization.RawRuntimeModuleDescriptor
 import com.intellij.platform.runtime.repository.serialization.RuntimeModuleRepositorySerialization
 import com.intellij.platform.runtime.repository.serialization.impl.CompactFileWriter
@@ -53,8 +54,8 @@ internal class RuntimeModuleRepositoryBuilder
     LOG.info("${descriptors.size} descriptors are created in ${timeToCreateDescriptors}ms")
     
     val errorReporter = object : RuntimeModuleRepositoryValidator.ErrorReporter {
-      override fun reportDuplicatingId(moduleId: String) {
-        context.reportError(DevkitRuntimeModuleRepositoryJpsBundle.message("error.message.duplicating.id.0.is.found", moduleId))
+      override fun reportDuplicatingId(moduleId: RuntimeModuleId) {
+        context.reportError(DevkitRuntimeModuleRepositoryJpsBundle.message("error.message.duplicating.id.0.is.found", moduleId.presentableName))
       }
     }
     RuntimeModuleRepositoryValidator.validate(descriptors, errorReporter) 

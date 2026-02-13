@@ -1,19 +1,29 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl.pinned.items.actions
 
+import com.intellij.icons.AllIcons
 import com.intellij.internal.statistic.collectors.fus.actions.persistence.ActionsCollectorImpl
-import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.AnActionResult
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.Presentation
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.Project
 import com.intellij.xdebugger.XDebuggerBundle
-import com.intellij.xdebugger.impl.XDebuggerUtilImpl
-import com.intellij.xdebugger.impl.pinned.items.*
+import com.intellij.xdebugger.impl.pinned.items.PinToTopMemberValue
+import com.intellij.xdebugger.impl.pinned.items.XDebuggerPinToTopManager
+import com.intellij.xdebugger.impl.pinned.items.canBePinned
+import com.intellij.xdebugger.impl.pinned.items.getPinInfo
+import com.intellij.xdebugger.impl.pinned.items.isPinned
+import com.intellij.xdebugger.impl.pinned.items.parentPinToTopValue
+import com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTree
 import com.intellij.xdebugger.impl.ui.tree.actions.XDebuggerTreeSplitActionBase
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl
-import icons.PlatformDebuggerImplIcons
 import java.awt.event.MouseEvent
-import java.util.*
+import java.util.Collections
 
 class XDebuggerPinToTopAction : XDebuggerTreeSplitActionBase() {
 
@@ -53,7 +63,7 @@ class XDebuggerPinToTopAction : XDebuggerTreeSplitActionBase() {
         }
         presentation.isVisible = true
         presentation.isEnabled = node.canBePinned()
-        presentation.icon = if (pinToTopManager.isItemPinned(node)) PlatformDebuggerImplIcons.PinToTop.UnpinnedItem else PlatformDebuggerImplIcons.PinToTop.PinnedItem
+        presentation.icon = if (pinToTopManager.isItemPinned(node)) AllIcons.Debugger.PinToTop.UnpinnedItem else AllIcons.Debugger.PinToTop.PinnedItem
         presentation.text = if (pinToTopManager.isItemPinned(node)) XDebuggerBundle.message("xdebugger.unpin.action") else XDebuggerBundle.message("xdebugger.pin.to.top.action")
 
     }
@@ -86,5 +96,5 @@ private fun performImpl(project: Project, node: XValueNodeImpl) {
   }
   node.parentPinToTopValue?.onChildPinned(pinNode, pinInfo)
 
-  XDebuggerUtilImpl.rebuildTreeAndViews(node.tree)
+  DebuggerUIUtil.rebuildTreeAndViews(node.tree)
 }

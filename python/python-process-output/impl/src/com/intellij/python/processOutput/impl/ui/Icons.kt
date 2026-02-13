@@ -1,17 +1,17 @@
 package com.intellij.python.processOutput.impl.ui
 
 import com.intellij.python.processOutput.impl.icons.PythonProcessOutputImplIcons
-import org.jetbrains.jewel.ui.icon.PathIconKey
+import javax.swing.Icon
+import org.jetbrains.jewel.bridge.icon.fromPlatformIcon
+import org.jetbrains.jewel.ui.icon.IntelliJIconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 internal object Icons {
-    @JvmField val CommandQueue = PythonProcessOutputImplIcons.CommandQueue
-
     object Keys {
-        val Process = PathIconKey("/icons/process.svg", Icons::class.java)
-        val ProcessBack = PathIconKey("/icons/processBack.svg", Icons::class.java)
-        val ProcessBackError = PathIconKey("/icons/processBackError.svg", Icons::class.java)
-        val ProcessError = PathIconKey("/icons/processError.svg", Icons::class.java)
+        val Process = PythonProcessOutputImplIcons.Process.toJewelKey()
+        val ResultIncorrect = PythonProcessOutputImplIcons.ResultIncorrect.toJewelKey()
+        val ProcessHeavy = PythonProcessOutputImplIcons.ProcessHeavy.toJewelKey()
+        val ProcessMedium = PythonProcessOutputImplIcons.ProcessMedium.toJewelKey()
         val Filter = AllIconsKeys.Actions.Show
         val Dropdown = AllIconsKeys.General.Dropdown
         val ExpandAll = AllIconsKeys.Actions.Expandall
@@ -26,4 +26,7 @@ internal object Icons {
         val Copy = AllIconsKeys.General.Copy
         val Folder = AllIconsKeys.Nodes.Folder
     }
+
+    private fun Icon.toJewelKey() =
+        IntelliJIconKey.fromPlatformIcon(this, PythonProcessOutputImplIcons::class.java)
 }

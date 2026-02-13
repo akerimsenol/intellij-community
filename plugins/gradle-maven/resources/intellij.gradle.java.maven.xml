@@ -21,5 +21,6 @@
         implementation="org.jetbrains.plugins.gradle.integrations.maven.GradleMavenProjectImportNotificationListener"/>
     <completion.contributor language="Groovy" order="first"
                             implementationClass="org.jetbrains.plugins.gradle.integrations.maven.codeInsight.completion.MavenDependenciesGradleCompletionContributor"/>
+    <projectService serviceImplementation="org.jetbrains.plugins.gradle.integrations.maven.MavenRepositoriesHolder"/>
   </extensions>
 </idea-plugin>

@@ -9,6 +9,7 @@ create_kotlinc_options(
     "kotlin.ExperimentalStdlibApi",
   ],
   x_consistent_data_class_copy_visibility = True,
+  x_context_parameters = True,
   x_jvm_default = "all-compatibility",
   x_lambdas = "class"
 )
@@ -48,7 +49,7 @@ jvm_library(
     "//fleet/build/fs:fs_test_lib",
     "@lib//:fleet-io-ktor-client-logging",
     "@lib//:slf4j-api",
-    "//fleet/junit",
+    "//fleet/test-runtime",
     "@lib//:fleet-io-ktor-client-mock",
   ],
   exports = [

@@ -11,8 +11,8 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="kotlin-stdlib" level="project" />
     <orderEntry type="module" module-name="intellij.gradle" />
+    <orderEntry type="module" module-name="intellij.gradle.plugin" />
     <orderEntry type="module" module-name="intellij.gradle.common" exported="" />
-    <orderEntry type="module" module-name="intellij.java.coverage" />
     <orderEntry type="module" module-name="intellij.gradle.jps" />
     <orderEntry type="module" module-name="intellij.java.indexing" />
     <orderEntry type="module" module-name="intellij.platform.analysis" />
@@ -37,8 +37,6 @@
     <orderEntry type="module" module-name="intellij.java.compiler" />
     <orderEntry type="module" module-name="intellij.groovy" />
     <orderEntry type="module" module-name="intellij.platform.workspace.storage" />
-    <orderEntry type="module" module-name="intellij.toml" />
-    <orderEntry type="module" module-name="intellij.toml.core" />
     <orderEntry type="module" module-name="intellij.java.execution.impl" />
     <orderEntry type="module" module-name="intellij.platform.lang.impl" />
     <orderEntry type="module" module-name="intellij.java" />
@@ -51,9 +49,6 @@
     <orderEntry type="module" module-name="intellij.libraries.xstream" />
     <orderEntry type="module" module-name="intellij.groovy.psi" />
     <orderEntry type="module" module-name="intellij.java.execution" />
-    <orderEntry type="module" module-name="intellij.maven" />
-    <orderEntry type="module" module-name="intellij.properties.psi" />
-    <orderEntry type="module" module-name="intellij.properties.backend.psi" />
     <orderEntry type="module" module-name="intellij.platform.jps.model.impl" />
     <orderEntry type="module" module-name="intellij.platform.statistics" />
     <orderEntry type="module" module-name="intellij.platform.core.ui" />
@@ -63,7 +58,6 @@
     <orderEntry type="module" module-name="intellij.java.compiler.impl" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinx.coroutines.core" />
     <orderEntry type="module" module-name="intellij.platform.objectSerializer.annotations" />
-    <orderEntry type="module" module-name="intellij.completionMlRanking" />
     <orderEntry type="module" module-name="intellij.performanceTesting" />
     <orderEntry type="module" module-name="intellij.platform.backend.workspace" />
     <orderEntry type="module" module-name="intellij.platform.backend.observation" />
@@ -73,5 +67,6 @@
     <orderEntry type="module" module-name="intellij.java.debugger.impl.shared" />
     <orderEntry type="module" module-name="intellij.platform.eel.provider" />
     <orderEntry type="module" module-name="intellij.platform.execution" />
+    <orderEntry type="module" module-name="intellij.properties.backend.psi" />
   </component>
 </module>

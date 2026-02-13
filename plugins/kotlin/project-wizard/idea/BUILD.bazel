@@ -51,7 +51,7 @@ jvm_library(
     "//java/java-impl:impl",
     "//java/idea-ui:ui",
     "//libraries/kotlinx/coroutines/core",
-    "//plugins/gradle:gradle-common",
+    "//plugins/gradle",
     "//plugins/kotlin/base/indices",
     "//platform/platform-api:ide",
     "//plugins/kotlin/code-insight/api",

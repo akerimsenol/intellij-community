@@ -1,14 +1,14 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.frame;
 
-import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy;
 import com.intellij.platform.debugger.impl.shared.XDebuggerWatchesManager;
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.xdebugger.XExpression;
-import com.intellij.xdebugger.impl.XDebuggerUtilImpl;
 import com.intellij.xdebugger.impl.inline.InlineWatch;
 import com.intellij.xdebugger.impl.inline.InlineWatchNodeImpl;
 import com.intellij.xdebugger.impl.inline.XInlineWatchesView;
+import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xdebugger.impl.ui.tree.XDebuggerTreeInplaceEditor;
 import com.intellij.xdebugger.impl.ui.tree.nodes.WatchNode;
 import com.intellij.xdebugger.impl.ui.tree.nodes.WatchesRootNode;
@@ -17,7 +17,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.awt.*;
+import java.awt.Rectangle;
 import java.util.Collections;
 
 @ApiStatus.Internal
@@ -59,7 +59,7 @@ public class WatchInplaceEditor extends XDebuggerTreeInplaceEditor {
       watchesManager = XDebugManagerProxy.getInstance().getWatchesManager(getProject());
       watchesManager.inlineWatchesRemoved(Collections.singletonList(inlineWatch), (XInlineWatchesView)myWatchesView);
     }
-    if (!XDebuggerUtilImpl.isEmptyExpression(expression) && index != -1) {
+    if (!DebuggerUIUtil.isEmptyExpression(expression) && index != -1) {
       if (myNode instanceof InlineWatchNodeImpl) {
         watchesManager.addInlineWatchExpression(expression, index, ((InlineWatchNodeImpl)myNode).getPosition(), false);
       } else  {

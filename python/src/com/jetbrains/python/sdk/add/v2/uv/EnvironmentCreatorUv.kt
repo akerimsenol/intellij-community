@@ -20,18 +20,25 @@ import com.intellij.util.ui.AsyncProcessIcon
 import com.jetbrains.python.PyBundle.message
 import com.jetbrains.python.errorProcessing.ErrorSink
 import com.jetbrains.python.errorProcessing.PyResult
-import com.jetbrains.python.getOrNull
 import com.jetbrains.python.newProjectWizard.collector.PythonNewProjectWizardCollector
-import com.jetbrains.python.sdk.add.v2.*
+import com.jetbrains.python.sdk.add.v2.CustomNewEnvironmentCreator
+import com.jetbrains.python.sdk.add.v2.PathHolder
 import com.jetbrains.python.sdk.add.v2.PythonInterpreterSelectionMethod.SELECT_EXISTING
+import com.jetbrains.python.sdk.add.v2.PythonMutableTargetAddInterpreterModel
 import com.jetbrains.python.sdk.add.v2.PythonSupportedEnvironmentManagers.PYTHON
 import com.jetbrains.python.sdk.add.v2.PythonSupportedEnvironmentManagers.UV
+import com.jetbrains.python.sdk.add.v2.ToolValidator
+import com.jetbrains.python.sdk.add.v2.ValidatedPath
+import com.jetbrains.python.sdk.add.v2.VenvExistenceValidationState
+import com.jetbrains.python.sdk.add.v2.savePathForEelOnly
+import com.jetbrains.python.sdk.add.v2.validatablePathField
 import com.jetbrains.python.sdk.uv.impl.createUvCli
 import com.jetbrains.python.sdk.uv.impl.createUvLowLevel
 import com.jetbrains.python.sdk.uv.impl.setUvExecutable
 import com.jetbrains.python.sdk.uv.setupNewUvSdkAndEnv
 import com.jetbrains.python.statistics.InterpreterType
 import com.jetbrains.python.util.ShowingMessageErrorSync
+import com.jetbrains.python.venvReader.VirtualEnvReader
 import io.github.z4kn4fein.semver.Version
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,12 +126,12 @@ internal class EnvironmentCreatorUv<P : PathHolder>(
       .projectPathWithDefault
       .combine(executableFlow) { projectPath, executable -> projectPath to executable }
       .onEach { (projectPath, executable) ->
-        val venvPath = projectPath.resolve(".venv")
+        val venvPath = projectPath.resolve(VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME)
 
         withContext(Dispatchers.IO) {
           venvExistenceValidationState.set(
             if (venvPath.exists())
-              VenvExistenceValidationState.Error(Paths.get(".venv"))
+              VenvExistenceValidationState.Error(Paths.get(VirtualEnvReader.DEFAULT_VIRTUALENV_DIRNAME))
             else
               VenvExistenceValidationState.Invisible
           )
@@ -145,7 +152,7 @@ internal class EnvironmentCreatorUv<P : PathHolder>(
 
           val pythonVersions = withContext(Dispatchers.IO) {
             val versionRequest = if (pyProjectTomlPath.exists()) {
-              PyProjectToml.parse(pyProjectTomlPath.readText()).getOrNull()?.project?.requiresPython
+              PyProjectToml.parse(pyProjectTomlPath.readText()).project?.requiresPython
             }
             else {
               null
@@ -180,12 +187,10 @@ internal class EnvironmentCreatorUv<P : PathHolder>(
     }
   }
 
-  override suspend fun setupEnvSdk(
-    moduleBasePath: Path,
-    baseSdks: List<Sdk>,
-    basePythonBinaryPath: P?,
-    installPackages: Boolean,
-  ): PyResult<Sdk> {
-    return setupNewUvSdkAndEnv(moduleBasePath, baseSdks, pythonVersion.get())
+  override suspend fun setupEnvSdk(moduleBasePath: Path): PyResult<Sdk> {
+    return setupNewUvSdkAndEnv(
+      workingDir = moduleBasePath,
+      version = pythonVersion.get(),
+    )
   }
 }

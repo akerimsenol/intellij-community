@@ -15,9 +15,8 @@ public final class PythonProcessOutputImplIcons {
   private static @NotNull Icon load(@NotNull String path, int cacheKey, int flags) {
     return IconManager.getInstance().loadRasterizedIcon(path, PythonProcessOutputImplIcons.class.getClassLoader(), cacheKey, flags);
   }
-  /** 16x16 */ public static final @NotNull Icon CommandQueue = load("icons/commandQueue.svg", 1434828820, 2);
   /** 16x16 */ public static final @NotNull Icon Process = load("icons/process.svg", -2015894419, 2);
-  /** 16x16 */ public static final @NotNull Icon ProcessBack = load("icons/processBack.svg", 1055076489, 2);
-  /** 16x16 */ public static final @NotNull Icon ProcessBackError = load("icons/processBackError.svg", -1366278226, 2);
-  /** 16x16 */ public static final @NotNull Icon ProcessError = load("icons/processError.svg", 1713815623, 2);
+  /** 16x16 */ public static final @NotNull Icon ProcessHeavy = load("icons/processHeavy.svg", 1632738849, 2);
+  /** 16x16 */ public static final @NotNull Icon ProcessMedium = load("icons/processMedium.svg", -1493276652, 2);
+  /** 16x16 */ public static final @NotNull Icon ResultIncorrect = load("icons/resultIncorrect.svg", -1784553690, 2);
 }

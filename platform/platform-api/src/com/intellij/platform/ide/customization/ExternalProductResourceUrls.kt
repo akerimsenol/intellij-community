@@ -63,13 +63,6 @@ interface ExternalProductResourceUrls {
     get() = null
 
   /**
-   * Used just like [technicalSupportUrl] if the product is activated with a free (non-commercial) license
-   */
-  @get:ApiStatus.Internal
-  val freeTechnicalSupportUrl: ((description: String) -> Url)?
-    get() = null
-
-  /**
    * Returns an instance which will be used to submit feedback about the product via the "Submit Feedback" action. 
    * If this function returns `null`, the action won't be available.
    */

@@ -39,15 +39,74 @@ import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.isBitwiseOrUnionAvailable
 import com.jetbrains.python.documentation.PythonDocumentationProvider
 import com.jetbrains.python.inspections.quickfix.PyUnpackTypeVarTupleQuickFix
-import com.jetbrains.python.psi.*
+import com.jetbrains.python.psi.FutureFeature
+import com.jetbrains.python.psi.LanguageLevel
+import com.jetbrains.python.psi.PyAnnotation
+import com.jetbrains.python.psi.PyAnnotationOwner
+import com.jetbrains.python.psi.PyArgumentList
+import com.jetbrains.python.psi.PyAssignmentStatement
+import com.jetbrains.python.psi.PyBinaryExpression
+import com.jetbrains.python.psi.PyCallExpression
+import com.jetbrains.python.psi.PyClass
+import com.jetbrains.python.psi.PyElement
+import com.jetbrains.python.psi.PyElementGenerator
+import com.jetbrains.python.psi.PyEllipsisLiteralExpression
+import com.jetbrains.python.psi.PyExpression
+import com.jetbrains.python.psi.PyExpressionStatement
+import com.jetbrains.python.psi.PyFile
+import com.jetbrains.python.psi.PyFunction
+import com.jetbrains.python.psi.PyKeywordArgument
+import com.jetbrains.python.psi.PyListLiteralExpression
+import com.jetbrains.python.psi.PyNamedParameter
+import com.jetbrains.python.psi.PyNoneLiteralExpression
+import com.jetbrains.python.psi.PyParenthesizedExpression
+import com.jetbrains.python.psi.PyPlainStringElement
+import com.jetbrains.python.psi.PyQualifiedExpression
+import com.jetbrains.python.psi.PyQualifiedNameOwner
+import com.jetbrains.python.psi.PyRecursiveElementVisitor
+import com.jetbrains.python.psi.PyReferenceExpression
+import com.jetbrains.python.psi.PyStarExpression
+import com.jetbrains.python.psi.PyStatement
+import com.jetbrains.python.psi.PyStringLiteralExpression
+import com.jetbrains.python.psi.PySubscriptionExpression
+import com.jetbrains.python.psi.PyTargetExpression
+import com.jetbrains.python.psi.PyTupleExpression
+import com.jetbrains.python.psi.PyTypeAliasStatement
+import com.jetbrains.python.psi.PyTypeCommentOwner
+import com.jetbrains.python.psi.PyTypeDeclarationStatement
+import com.jetbrains.python.psi.PyTypeParameter
+import com.jetbrains.python.psi.PyTypeParameterListOwner
+import com.jetbrains.python.psi.PyTypedElement
+import com.jetbrains.python.psi.PyUtil
+import com.jetbrains.python.psi.PyWithAncestors
 import com.jetbrains.python.psi.impl.PyBuiltinCache
 import com.jetbrains.python.psi.impl.PyEvaluator
 import com.jetbrains.python.psi.impl.PyPsiUtils
 import com.jetbrains.python.psi.impl.stubs.PyTypingAliasStubType
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.resolve.PyResolveUtil
-import com.jetbrains.python.psi.types.*
+import com.jetbrains.python.psi.types.PyClassLikeType
+import com.jetbrains.python.psi.types.PyClassType
+import com.jetbrains.python.psi.types.PyCollectionType
+import com.jetbrains.python.psi.types.PyConcatenateType
+import com.jetbrains.python.psi.types.PyInstantiableType
+import com.jetbrains.python.psi.types.PyLiteralType
+import com.jetbrains.python.psi.types.PyNarrowedType
+import com.jetbrains.python.psi.types.PyParamSpecType
+import com.jetbrains.python.psi.types.PyPositionalVariadicType
+import com.jetbrains.python.psi.types.PySelfType
+import com.jetbrains.python.psi.types.PyTupleType
+import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyTypeChecker
+import com.jetbrains.python.psi.types.PyTypeParameterMapping
+import com.jetbrains.python.psi.types.PyTypeParameterType
+import com.jetbrains.python.psi.types.PyTypeVarTupleType
+import com.jetbrains.python.psi.types.PyTypeVarType
 import com.jetbrains.python.psi.types.PyTypeVarType.Variance
+import com.jetbrains.python.psi.types.PyTypedDictType
+import com.jetbrains.python.psi.types.PyTypingNewType
+import com.jetbrains.python.psi.types.PyUnpackedTupleType
+import com.jetbrains.python.psi.types.TypeEvalContext
 import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 
 class PyTypeHintsInspection : PyInspection() {
@@ -1096,8 +1155,14 @@ class PyTypeHintsInspection : PyInspection() {
     }
 
     private fun checkGenericTypeParameterization(node: PySubscriptionExpression) {
-      val declaration = node.operand.reference
-        ?.let { PyResolveUtil.resolveDeclaration(it, resolveContext) }
+      val operandRefExpression = node.operand as? PyReferenceExpression ?: return
+      val declaration = multiFollowAssignmentsChain(operandRefExpression) {
+        return@multiFollowAssignmentsChain when {
+          PyTypingTypeProvider.isExplicitTypeAlias(it, myTypeEvalContext) -> false
+          PyTypingAliasStubType.getAssignedValueStubLike(it) is PyReferenceExpression -> followNotTypingOpaque(it)
+          else -> false
+        }
+      }.firstOrNull()
 
       when (declaration) {
         is PyTargetExpression -> checkTypeAliasParameterization(node, declaration)
@@ -1134,11 +1199,9 @@ class PyTypeHintsInspection : PyInspection() {
 
     private fun checkTypeAliasParameterization(node: PySubscriptionExpression, declaration: PyTargetExpression) {
       val assignedValue = PyTypingAliasStubType.getAssignedValueStubLike(declaration) ?: return
-      if (PyTypingTypeProvider.resolveToQualifiedNames(assignedValue, myTypeEvalContext)
-          .any { PyTypingTypeProvider.OPAQUE_NAMES.contains(it) }) return
       val assignedValueType = Ref.deref(PyTypingTypeProvider.getType(assignedValue, myTypeEvalContext)) ?: return
 
-      val isExplicitTypeAlias = declaration.annotationValue != null
+      val isExplicitTypeAlias = PyTypingTypeProvider.isExplicitTypeAlias(declaration, myTypeEvalContext)
       val generics = collectTypeParametersFromTypeAlias(assignedValue, assignedValueType, isExplicitTypeAlias)
       if (generics.isEmpty) {
         registerProblem(node.indexExpression, PyPsiBundle.message("INSP.type.hints.generic.type.alias.is.not.generic.or.already.parameterized"), ProblemHighlightType.WARNING)

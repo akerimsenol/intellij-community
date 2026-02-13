@@ -8,40 +8,46 @@ import git4idea.push.GitSpecialRefRemoteBranch
 import git4idea.remote.hosting.HostedGitRepositoryRemote
 import git4idea.repo.GitRemote
 import org.jetbrains.plugins.gitlab.api.GitLabServerPath
-import org.jetbrains.plugins.gitlab.api.dto.*
+import org.jetbrains.plugins.gitlab.api.dto.GitLabDiffRefs
+import org.jetbrains.plugins.gitlab.api.dto.GitLabLabelGQLDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabMergeRequestPermissionsDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabPipelineDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabProjectDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabReviewerDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabUserDTO
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestDTO
-import java.util.*
+import java.util.Date
 
 data class GitLabMergeRequestFullDetails(
-  val iid: String,
-  val title: @NlsSafe String,
-  val createdAt: Date,
-  val author: GitLabUserDTO,
-  val mergeStatus: GitLabMergeStatus,
-  val isMergeable: Boolean,
-  val state: GitLabMergeRequestState,
-  val draft: Boolean,
-  val assignees: List<GitLabUserDTO>,
-  val reviewers: List<GitLabReviewerDTO>,
-  val webUrl: @NlsSafe String,
-  val detailedLabels: List<GitLabLabelDTO>,
-  val targetProject: GitLabProjectDTO,
-  val sourceProject: GitLabProjectDTO?,
-  val description: String,
-  val approvedBy: List<GitLabUserDTO>,
-  val targetBranch: String,
-  val sourceBranch: String,
-  val approvalsRequired: Int,
-  val conflicts: Boolean,
-  val onlyAllowMergeIfAllDiscussionsAreResolved: Boolean,
-  val onlyAllowMergeIfPipelineSucceeds: Boolean,
-  val allowMergeOnSkippedPipeline: Boolean,
-  val diffRefs: GitLabDiffRefs?,
-  val headPipeline: GitLabPipelineDTO?,
-  val userPermissions: GitLabMergeRequestPermissionsDTO,
-  val shouldRemoveSourceBranch: Boolean?,
-  val shouldBeRebased: Boolean,
-  val rebaseInProgress: Boolean
+    val iid: String,
+    val title: @NlsSafe String,
+    val createdAt: Date,
+    val author: GitLabUserDTO,
+    val mergeStatus: GitLabMergeStatus,
+    val isMergeable: Boolean,
+    val state: GitLabMergeRequestState,
+    val draft: Boolean,
+    val assignees: List<GitLabUserDTO>,
+    val reviewers: List<GitLabReviewerDTO>,
+    val webUrl: @NlsSafe String,
+    val detailedLabels: List<GitLabLabelGQLDTO>,
+    val targetProject: GitLabProjectDTO,
+    val sourceProject: GitLabProjectDTO?,
+    val description: String,
+    val approvedBy: List<GitLabUserDTO>,
+    val targetBranch: String,
+    val sourceBranch: String,
+    val approvalsRequired: Int,
+    val conflicts: Boolean,
+    val onlyAllowMergeIfAllDiscussionsAreResolved: Boolean,
+    val onlyAllowMergeIfPipelineSucceeds: Boolean,
+    val allowMergeOnSkippedPipeline: Boolean,
+    val diffRefs: GitLabDiffRefs?,
+    val headPipeline: GitLabPipelineDTO?,
+    val userPermissions: GitLabMergeRequestPermissionsDTO,
+    val shouldRemoveSourceBranch: Boolean?,
+    val shouldBeRebased: Boolean,
+    val rebaseInProgress: Boolean
 ) {
 
   companion object {

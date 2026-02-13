@@ -24,7 +24,11 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.jetbrains.python.fixtures.PyTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
 import com.jetbrains.python.psi.PyExpression;
-import com.jetbrains.python.psi.types.*;
+import com.jetbrains.python.psi.types.PyCollectionType;
+import com.jetbrains.python.psi.types.PyType;
+import com.jetbrains.python.psi.types.PyTypedDictType;
+import com.jetbrains.python.psi.types.PyUnionType;
+import com.jetbrains.python.psi.types.TypeEvalContext;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -1015,8 +1019,8 @@ public class PyTypingTest extends PyTestCase {
   }
 
   // PY-21864
-  public void testLocalVariableAnnotationAheadOfTimeOnlyFirstHintConsidered() {
-    doTest("int",
+  public void testLocalVariableAnnotationAheadOfTimeMostRecentHintConsidered() {
+    doTest("str",
            """
              x: int
              x = foo()
@@ -2630,7 +2634,7 @@ public class PyTypingTest extends PyTestCase {
 
   // PY-53105
   public void testGenericVariadicsIntersectsSameName() {
-    doTest("tuple[int, str, bool, Any]",
+    doTest("tuple[int, str, bool, list[str], dict[str, int]]",
            """
              from typing import Tuple, TypeVarTuple, TypeVar
 
@@ -2640,7 +2644,7 @@ public class PyTypingTest extends PyTestCase {
              MyType = Tuple[int, T, *Ts]
              MyType1 = MyType[str, bool, *Ts]
 
-             t: MyType1[list[str], dict[str, int]]  # first place \s
+             t: MyType1[list[str], dict[str, int]]
              expr = t
              """);
   }
@@ -5981,6 +5985,49 @@ public class PyTypingTest extends PyTestCase {
       """);
   }
 
+  public void testDataclassTransformFieldSpecifierOverloadInitFalseConstructorSignature() {
+    doTestExpressionUnderCaret("(*, name: str) -> CustomerModel1", """
+     from typing import Any, Callable, Literal, TypeVar, dataclass_transform, overload
+     
+     T = TypeVar("T")
+     
+     
+     @overload
+     def field1(
+             *,
+             # default: str | None = None,
+             resolver: Callable[[], Any],
+             init: Literal[False] = False,
+     ) -> Any:
+         ...
+     
+     @overload
+     def field1(
+             *,
+             init: Literal[True] = True,
+             kw_only: bool = True,
+             default: Any = None
+     ) -> Any:
+         ...
+     
+     def field1(**kwargs) -> Any:
+         return kwargs
+     
+     
+     @dataclass_transform(kw_only_default=True, field_specifiers=(field1,))
+     def create_model(*, init: bool = True) -> Callable[[type[T]], type[T]]:
+         ...
+     
+     
+     @create_model()
+     class CustomerModel1:
+         id: int = field1(resolver=lambda: 0)
+         name: str = field1(default="Voldemort")
+     
+     Customer<caret>Model1()
+     """);
+  }
+
   public void testDataclassTransformDecoratedFunctionType() {
     doTest("(cls: Any) -> None","""
              from typing import dataclass_transform
@@ -6833,6 +6880,63 @@ public class PyTypingTest extends PyTestCase {
       
       
       expr = NonWorkingClass().add_two
+      """);
+  }
+
+  // PY-86463
+  public void testMatchingWithInheritedGenericProtocol() {
+    doTest("int", """
+      from typing import Protocol
+      
+      class P[T](Protocol):
+          def method(self, x: T) -> T:
+              pass
+      
+      class P2[T](P[T], Protocol):
+          pass
+      
+      class Impl:
+          def method(self, x: int) -> int:
+              return 42
+      
+      def expects_generic[T](x: P2[T]) -> T:
+          return x.method()
+      
+      expr = expects_generic(Impl())
+      """);
+  }
+
+  // PY-87012
+  public void testLegacyTypeAliasesWithQuotedUnionTypesPreservedInStubs() {
+    doMultiFileStubAwareTest("list[int | str]", """
+      from mod import x
+      
+      expr = x
+      """);
+  }
+
+  // PY-87012
+  public void testLegacyTypeAliasWithFullyQuotedTypeIsNotAllowed() {
+    doMultiFileStubAwareTest("Any", """
+      from mod import x
+      
+      expr = x
+      """);
+  }
+
+  // PY-76922
+  public void testIntersectionTypeParsing() {
+    doTest("int & str", """
+      expr: int & str
+      """);
+  }
+
+  // PY-76922
+  public void testLegacyTypeAliasesWithQuotedIntersectionTypesPreservedInStubs() {
+    doMultiFileStubAwareTest("list[int & str]", """
+      from mod import x
+      
+      expr = x
       """);
   }
 

@@ -24,7 +24,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 public class XStandaloneVariablesView extends XVariablesViewBase {
-  private final XStackFrame myStackFrame;
+  protected final XStackFrame myStackFrame;
 
   public XStandaloneVariablesView(@NotNull Project project,
                                   @NotNull XDebuggerEditorsProvider editorsProvider,

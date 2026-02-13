@@ -6,13 +6,14 @@ import com.intellij.python.processOutput.ProcessOutputApi
 import org.jetbrains.annotations.Nls
 
 internal class ProcessOutputApiImpl : ProcessOutputApi {
-    override fun specifyAdditionalMessageToUser(
+    override fun specifyAdditionalInfo(
         project: Project,
         logId: Int,
-        text: @Nls String,
+        message: @Nls String?,
+        isCritical: Boolean,
     ) {
         val service = project.service<ProcessOutputControllerService>()
-        service.specifyAdditionalMessageToUser(logId, text)
+        service.specifyAdditionalInfo(logId, message, isCritical)
     }
 
     override fun tryOpenLogInToolWindow(

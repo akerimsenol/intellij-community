@@ -1,7 +1,14 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.eel.fs
 
-import com.intellij.platform.eel.*
+import com.intellij.platform.eel.EelDescriptor
+import com.intellij.platform.eel.EelOsFamily
+import com.intellij.platform.eel.EelResult
+import com.intellij.platform.eel.EelUserInfo
+import com.intellij.platform.eel.EelUserPosixInfo
+import com.intellij.platform.eel.EelUserWindowsInfo
+import com.intellij.platform.eel.GeneratedBuilder
+import com.intellij.platform.eel.ReadResult
 import com.intellij.platform.eel.channels.EelDelicateApi
 import com.intellij.platform.eel.fs.EelFileSystemApi.StatError
 import com.intellij.platform.eel.path.EelPath
@@ -340,7 +347,7 @@ interface EelFileSystemApi {
     val entryOrder: WalkDirectoryEntryOrder get() = WalkDirectoryEntryOrder.RANDOM
 
     /**
-     * Yield permissions and timestamps. Default is false.
+     * Yield permissions, timestamps, and attributes. Default is false.
      */
     val readMetadata: Boolean get() = false
 
@@ -424,10 +431,6 @@ interface EelFileSystemApi {
        */
       ALPHABETICAL
     }
-
-    interface Builder {
-      fun build(): WalkDirectoryOptions
-    }
   }
 
   /**
@@ -443,6 +446,41 @@ interface EelFileSystemApi {
     interface Other : WalkDirectoryError, EelFsError.Other
     interface DoesNotExist : WalkDirectoryError, EelFsError.DoesNotExist
     interface PermissionDenied : WalkDirectoryError, EelFsError.PermissionDenied
+  }
+
+  /**
+   * Streaming write sends chunks continuously and reports the total number of bytes written only at the end.
+   * It is guaranteed that all chunks will be written completely, otherwise there is an error.
+   * Data is written from the beginning of the file, unless the file is opened in append mode.
+   * This method is highly preferable over [EelOpenedFile.Writer.write] when writing a lot of data to a remote file.
+   *
+   * [chunks] Chunks of data to be written to the file
+   */
+  @CheckReturnValue
+  suspend fun streamingWrite(chunks: Flow<ByteBuffer>, targetFileOpenOptions: WriteOptions): StreamingWriteResult
+
+  sealed interface StreamingWriteError : EelFsError {
+    interface DoesNotExist : StreamingWriteError, EelFsError.DoesNotExist
+    interface AlreadyExists : StreamingWriteError, EelFsError.AlreadyExists
+    interface PermissionDenied : StreamingWriteError, EelFsError.PermissionDenied
+    interface NotFile : StreamingWriteError, EelFsError.NotFile
+    interface NotEnoughSpace : StreamingWriteError, EelFsError.NotEnoughSpace
+    interface Other : StreamingWriteError, EelFsError.Other
+  }
+
+  /**
+   * Streaming read will read from the beginning until the end of the file, otherwise there is an error.
+   * It is not guaranteed that each chunk is the same size.
+   * This method is highly preferable over [EelOpenedFile.Reader.read] when reading a lot of data from a remote file.
+   */
+  @CheckReturnValue
+  suspend fun streamingRead(path: EelPath): Flow<StreamingReadResult>
+
+  sealed interface StreamingReadError : EelFsError {
+    interface DoesNotExist : StreamingReadError, EelFsError.DoesNotExist
+    interface PermissionDenied : StreamingReadError, EelFsError.PermissionDenied
+    interface NotFile : StreamingReadError, EelFsError.NotFile
+    interface Other : StreamingReadError, EelFsError.Other
   }
 
   /**

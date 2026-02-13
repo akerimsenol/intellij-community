@@ -6,13 +6,15 @@ package com.intellij.ide.plugins
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonGenerator
 import com.intellij.openapi.extensions.PluginId
-import com.intellij.platform.plugins.parser.impl.RawPluginDescriptor
-import com.intellij.platform.plugins.parser.impl.elements.ContentModuleElement
-import com.intellij.platform.plugins.parser.impl.elements.DependenciesElement
-import com.intellij.platform.plugins.parser.impl.elements.ModuleLoadingRuleValue
-import com.intellij.platform.plugins.parser.impl.elements.ModuleVisibilityValue
-import com.intellij.platform.plugins.testFramework.LoadFromSourceXIncludeLoader
-import com.intellij.platform.plugins.testFramework.loadRawPluginDescriptorInTest
+import com.intellij.platform.pluginSystem.parser.impl.RawPluginDescriptor
+import com.intellij.platform.pluginSystem.parser.impl.ScopedElementsContainer
+import com.intellij.platform.pluginSystem.parser.impl.elements.ContentModuleElement
+import com.intellij.platform.pluginSystem.parser.impl.elements.DependenciesElement
+import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleLoadingRuleValue
+import com.intellij.platform.pluginSystem.parser.impl.elements.ModuleVisibilityValue
+import com.intellij.platform.pluginSystem.parser.impl.elements.ServiceElement
+import com.intellij.platform.pluginSystem.testFramework.LoadFromSourceXIncludeLoader
+import com.intellij.platform.pluginSystem.testFramework.loadRawPluginDescriptorInTest
 import com.intellij.project.IntelliJProjectConfiguration
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.junit5.NamedFailure
@@ -52,6 +54,7 @@ data class PluginVariantWithDynamicIncludes(
 
 data class PluginValidationOptions(
   val skipUnresolvedOptionalContentModules: Boolean = false,
+  val skipServicesOverridesCheck: Boolean = false,
   val reportDependsTagInPluginXmlWithPackageAttribute: Boolean = true,
   val referencedPluginIdsOfExternalPlugins: Set<String> = emptySet(),
   val prefixesOfPathsIncludedFromLibrariesViaXiInclude: List<String> = emptyList(),
@@ -81,11 +84,23 @@ data class PluginValidationOptions(
   val modulesWithIncorrectlyPlacedModuleDescriptor: Set<String> = emptySet(),
 
   /**
+   * Mapping from a plugin ID to the list of its content modules which don't have a dedicated JPS module and registered using deprecated
+   * `module.name/subDescriptor` syntax.
+   */
+  val pluginsToContentModulesWithoutDedicatedJpsModules: Map<String, List<String>> = emptyMap(),
+
+  /**
    * Set of implementation classes of existing application-level and project-level components which shouldn't be reported as errors. 
    */
   val componentImplementationClassesToIgnore: Set<String> = emptySet(),
 
   val pluginVariantsWithDynamicIncludes: List<PluginVariantWithDynamicIncludes> = emptyList(),
+
+  /**
+   * Names of service interfaces that are overridden by plugins which sources are located outside the current project, and therefore need
+   * to be registered as `open`.
+   */
+  val externallyOverriddenServices: Set<String> = emptySet(),
 )
 
 fun validatePluginModel(projectPath: Path, validationOptions: PluginValidationOptions = PluginValidationOptions()): PluginValidationResult {
@@ -135,10 +150,6 @@ class PluginValidationResult internal constructor(
       }
     }
     return stringWriter.buffer
-  }
-
-  fun writeGraph(outFile: Path, projectHomePath: Path) {
-    PluginGraphWriter(pluginIdToInfo, projectHomePath).write(outFile)
   }
 }
 
@@ -268,12 +279,18 @@ class PluginModelValidator(
       checkModuleElements(moduleDescriptor = pluginInfo.descriptor, sourceModule = pluginInfo.sourceModule, pluginInfo.descriptorFile)
     }
 
+    // additional content check: services overrides
+    if (!validationOptions.skipServicesOverridesCheck) {
+      checkServicesOverrides(descriptorFileInfos, RawPluginDescriptor::projectElementsContainer)
+      checkServicesOverrides(descriptorFileInfos, RawPluginDescriptor::appElementsContainer)
+    }
+
+    // 3. check dependencies - we are aware about all modules now
     val contentModuleToContainingPlugins = HashMap<String, MutableList<ModuleInfo>>()
     for (pluginInfo in allMainModulesOfPlugins) {
       pluginInfo.content.groupByTo(contentModuleToContainingPlugins, { it.name!! }, { pluginInfo })
     }
 
-    // 3. check dependencies - we are aware about all modules now
     for (pluginInfo in allMainModulesOfPlugins) {
       val descriptor = pluginInfo.descriptor
 
@@ -339,6 +356,84 @@ class PluginModelValidator(
     }
 
     return PluginValidationResult(_errors, pluginIdToInfo)
+  }
+
+  private fun getOpenServices(
+    services: List<ServiceElement>,
+    descriptor: DescriptorFileInfo,
+  ): Set<String> {
+    return services
+      .filter { it.open }
+      .mapNotNull { getServiceInterface(it, descriptor) }
+      .toSet()
+  }
+
+  private fun getOverriddenServices(
+    services: List<ServiceElement>,
+    descriptor: DescriptorFileInfo,
+  ): Set<String> {
+    return services
+      .filter { it.overrides }
+      .mapNotNull { getServiceInterface(it, descriptor) }
+      .toSet()
+  }
+
+  private fun getServiceInterface(service: ServiceElement, descriptorForLogging: DescriptorFileInfo): String? {
+    val serviceInterface = service.serviceInterface ?: service.serviceImplementation
+    if (serviceInterface == null) {
+      reportError("Services declared must declare `serviceInterfance` or `serviceImplementation`\n" +
+                  "$service in ${descriptorForLogging.descriptorFile}", descriptorForLogging.sourceModule)
+    }
+    return serviceInterface
+  }
+
+  private fun checkServicesOverrides(descriptors: Collection<DescriptorFileInfo>, containerSelector: (RawPluginDescriptor) -> ScopedElementsContainer) {
+    val allOpenServices = descriptors.flatMapTo(HashSet()) {
+      getOpenServices(containerSelector(it.descriptor).services, it)
+    }
+    val allOverriddenServices = descriptors.flatMapTo(HashSet()) {
+      getOverriddenServices(containerSelector(it.descriptor).services, it)
+    }
+
+    for (descriptor in descriptors) {
+      checkServicesOverridesInSingleScopedContainer(descriptor,
+                                                    containerSelector(descriptor.descriptor).services,
+                                                    allOpenServices,
+                                                    allOverriddenServices)
+    }
+  }
+
+  private fun checkServicesOverridesInSingleScopedContainer(
+    descriptor: DescriptorFileInfo,
+    servicesInContainerAndInDescriptor: List<ServiceElement>,
+    allOpenServicesInContainer: Set<String>,
+    allOverriddenServicesInContainer: Set<String>,
+  ) {
+    getOverriddenServices(servicesInContainerAndInDescriptor, descriptor)
+      .filterNot { allOpenServicesInContainer.contains(it) }
+      .forEach { serviceInterface ->
+        reportError("Service $serviceInterface is not open for override.\n" +
+                    "Please either add `open='true'` to the service declaration you want to override, or remove `overrides='true'` in ${descriptor.descriptorFile}",
+                    descriptor.sourceModule)
+      }
+
+    getOpenServices(servicesInContainerAndInDescriptor, descriptor)
+      .filterNot { allOverriddenServicesInContainer.contains(it) || validationOptions.externallyOverriddenServices.contains(it) }
+      .forEach { serviceInterface ->
+        reportError("Service $serviceInterface is declared as open in ${descriptor.descriptorFile}, but is not overridden anywhere.\n" +
+                    "Please consider making the service non-open, or add this service to `externallyOverriddenServices` if some external override exists.",
+                    descriptor.sourceModule)
+      }
+
+    servicesInContainerAndInDescriptor
+      .filter { !it.overrides && !it.open }
+      .mapNotNull { getServiceInterface(it, descriptor) }
+      .filter { allOpenServicesInContainer.contains(it) }
+      .forEach { serviceInterface ->
+        reportError("Service $serviceInterface is declared as open in some plugins, but not in ${descriptor.descriptorFile}.\n" +
+                    "Please add `open='true'` to the your service declaration.",
+                    descriptor.sourceModule)
+      }
   }
 
   private fun checkDepends(
@@ -596,6 +691,22 @@ class PluginModelValidator(
           ))
         }
         continue
+      }
+
+      if (moduleName.contains("/")) {
+        val knownViolations = validationOptions.pluginsToContentModulesWithoutDedicatedJpsModules[referencingModuleInfo.pluginId] ?: emptyList()
+        if (moduleName !in knownViolations) {
+          reportError(
+            message = """
+              |Module '$moduleName' is registered in '${referencingModuleInfo.pluginId}' plugin using deprecated module.name/subDescriptor syntax.
+              |Extract it to a separate JPS module using the quick-fix provided by the DevKit plugin as described in https://youtrack.jetbrains.com/issue/IJPL-165543.
+            """.trimMargin(),
+            sourceModule = moduleDescriptorFileInfo.sourceModule,
+            params = mapOf(
+              "referencingDescriptorFile" to referencingModuleInfo.descriptorFile,
+            )
+          )
+        }
       }
 
       val moduleDescriptor = moduleDescriptorFileInfo.descriptor

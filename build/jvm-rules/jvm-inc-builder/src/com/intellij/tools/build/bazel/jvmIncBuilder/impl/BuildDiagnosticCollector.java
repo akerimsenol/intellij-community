@@ -46,6 +46,8 @@ public class BuildDiagnosticCollector {
   private final ArrayList<CompileRoundData> myRounds = new ArrayList<>();
 
   private boolean myIsWholeTargetRebuild;
+  private long myLibrariesDifferentiateBegin = -1L;
+  private long myLibrariesDifferentiateEnd = -1L;
 
   public BuildDiagnosticCollector(@NotNull BuildContext context) {
     myContext = context;
@@ -54,6 +56,13 @@ public class BuildDiagnosticCollector {
 
   public void setWholeTargetRebuild(boolean wholeTargetRebuild) {
     myIsWholeTargetRebuild = wholeTargetRebuild;
+  }
+
+  public void markLibrariesDifferentiateBegin() {
+    myLibrariesDifferentiateBegin = System.nanoTime();
+  }
+  public void markLibrariesDifferentiateEnd() {
+    myLibrariesDifferentiateEnd = System.nanoTime();
   }
 
   public void setLibrariesDifferentiateLog(Iterable<NodeSource> affectedSources, @Nullable String librariesDifferentiateLog) {
@@ -97,7 +106,7 @@ public class BuildDiagnosticCollector {
 
         ConfigurationState pastState = ConfigurationState.loadSavedState(myContext);
         NodeSourcePathMapper pathMapper = myContext.getPathMapper();
-        ConfigurationState presentState = new ConfigurationState(pathMapper, myContext.getSources(), myContext.getResources(), myContext.getBinaryDependencies(), myContext.getFlags());
+        ConfigurationState presentState = new ConfigurationState(pathMapper, myContext.getSources(), myContext.getResources(), myContext.getBinaryDependencies(), myContext.getFlags(), myContext.getUntrackedInputsDigest());
 
         zos.putNextEntry(createZipEntry(dataDir, "description.txt"));
         //noinspection IOResourceOpenedButNotSafelyClosed
@@ -124,6 +133,8 @@ public class BuildDiagnosticCollector {
         };
         digestRenderer.formatDigest("Worker Flags", pastState, presentState, ConfigurationState::getFlagsDigest);
         digestRenderer.formatDigest("Classpath Structure", pastState, presentState, ConfigurationState::getClasspathStructureDigest);
+        digestRenderer.formatDigest("Runners", pastState, presentState, ConfigurationState::getRunnersDigest);
+        digestRenderer.formatDigest("Untracked Inputs", pastState, presentState, ConfigurationState::getUntrackedInputsDigest);
         readme.println();
         readme.format("Whole target rebuild from the beginning? %s", myIsWholeTargetRebuild? "Yes" : "No");
 
@@ -136,6 +147,11 @@ public class BuildDiagnosticCollector {
         writeSources(readme, "Deleted Binary Dependencies:", libDelta.getDeleted());
         writeSources(readme, "Changed Binary Dependencies:", libDelta.getChanged());
         writeSources(readme, "Added Binary Dependencies:", filter(libDelta.getModified(), s -> !contains(libDelta.getChanged(), s)));
+        
+        if (myLibrariesDifferentiateBegin > 0L && myLibrariesDifferentiateEnd > myLibrariesDifferentiateBegin) {
+          readme.println();
+          readme.format("Binary dependencies differentiate time: %s", Duration.ofNanos(myLibrariesDifferentiateEnd - myLibrariesDifferentiateBegin));
+        }
 
         if (myLibrariesDifferentiateLog != null) {
           writeRoundData(readme, "Sources affected after binary dependencies differentiate:", 0, myLibrariesDifferentiateLog);

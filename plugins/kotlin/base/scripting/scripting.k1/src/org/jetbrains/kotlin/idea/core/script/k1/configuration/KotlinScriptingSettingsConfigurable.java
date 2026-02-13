@@ -13,13 +13,15 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.idea.base.resources.KotlinBundle;
+import org.jetbrains.kotlin.idea.configuration.KotlinScriptingSetttingsIdKt;
 import org.jetbrains.kotlin.idea.core.script.k1.ScriptDefinitionsManager;
 import org.jetbrains.kotlin.idea.core.script.k1.settings.KotlinScriptingSettingsImpl;
-import org.jetbrains.kotlin.idea.core.script.shared.KotlinScriptingSetttingsIdKt;
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinition;
 import org.jetbrains.kotlin.scripting.definitions.ScriptDefinitionProvider;
 
-import javax.swing.*;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 
 import static kotlin.streams.jdk8.StreamsKt.asStream;
 

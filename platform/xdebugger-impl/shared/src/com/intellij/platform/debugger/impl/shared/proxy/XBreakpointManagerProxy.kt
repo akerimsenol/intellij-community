@@ -43,6 +43,7 @@ interface XBreakpointManagerProxy {
   fun restoreRemovedBreakpoint(breakpoint: XBreakpointProxy)
 
   fun copyLineBreakpoint(breakpoint: XLineBreakpointProxy, file: VirtualFile, line: Int)
+  fun onBreakpointRemoval(breakpoint: XLineBreakpointProxy, session: XDebugSessionProxy)
 
   fun findBreakpointAtLine(type: XLineBreakpointTypeProxy, file: VirtualFile, line: Int): XLineBreakpointProxy? =
     findBreakpointsAtLine(type, file, line).firstOrNull()

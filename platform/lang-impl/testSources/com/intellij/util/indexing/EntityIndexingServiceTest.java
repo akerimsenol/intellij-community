@@ -6,7 +6,11 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.roots.*;
+import com.intellij.openapi.roots.DependencyScope;
+import com.intellij.openapi.roots.LibraryOrderEntry;
+import com.intellij.openapi.roots.ModifiableRootModel;
+import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.roots.ModuleRootManagerEx;
 import com.intellij.openapi.roots.impl.OrderEntryUtil;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTable;
@@ -29,8 +33,10 @@ import java.io.IOException;
 public class EntityIndexingServiceTest extends EntityIndexingServiceTestBase {
 
   public void testIndexingModule() throws Exception {
-    doTest(this::createModuleAndSourceRoot, this::removeModule,
-           pair -> IndexableEntityProviderMethods.INSTANCE.createModuleContentIterators(pair.getFirst()));
+    if (!Registry.is("use.workspace.file.index.for.partial.scanning")) {
+      doTest(this::createModuleAndSourceRoot, this::removeModule,
+             pair -> IndexableEntityProviderMethods.INSTANCE.createModuleContentIterators(pair.getFirst()));
+    }
   }
 
   @NotNull

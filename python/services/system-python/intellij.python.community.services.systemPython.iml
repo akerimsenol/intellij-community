@@ -23,14 +23,13 @@
     <orderEntry type="library" scope="TEST" name="JUnit5" level="project" />
     <orderEntry type="module" module-name="intellij.platform.projectModel" />
     <orderEntry type="module" module-name="intellij.python.community.testFramework" scope="TEST" />
-    <orderEntry type="library" scope="TEST" name="hamcrest" level="project" />
+    <orderEntry type="module" module-name="intellij.libraries.hamcrest" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.community.services.shared" exported="" />
     <orderEntry type="module" module-name="intellij.python.community.services.internal.impl" />
     <orderEntry type="module" module-name="intellij.platform.util" />
     <orderEntry type="module" module-name="intellij.python.community.junit5Tests.framework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.community.impl.installer" />
-    <orderEntry type="module" module-name="intellij.python.community.impl.venv" />
-    <orderEntry type="module" module-name="intellij.python.community.testFramework.testEnv" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.python.venv" />
     <orderEntry type="module" module-name="intellij.platform.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.psi.impl" />
     <orderEntry type="module" module-name="intellij.python.community.execService.python" />

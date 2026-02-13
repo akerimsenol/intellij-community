@@ -32,7 +32,7 @@ jvm_library(
     "@lib//:opentelemetry",
     "@lib//:opentelemetry-semconv",
     "//platform/util/coroutines",
-    "//platform/plugins/parser/impl",
+    "//platform/pluginSystem/parser/impl",
     "//platform/syntax/syntax-api:syntax",
     "//platform/eel",
   ],

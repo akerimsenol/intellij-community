@@ -7,9 +7,9 @@ import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
 import com.intellij.platform.debugger.impl.ui.XDebuggerEntityConverter
-import com.intellij.util.asDisposable
 import com.intellij.xdebugger.XDebugSessionListener
 import kotlinx.coroutines.launch
+import org.jetbrains.annotations.ApiStatus
 
 
 private class ExecutionPointManagerChangeListener(val project: Project) : XDebuggerManagerProxyListener {
@@ -48,7 +48,7 @@ private class ExecutionPointManagerChangeListener(val project: Project) : XDebug
         updateExecutionPosition(session)
       }
 
-    }, session.coroutineScope.asDisposable())
+    })
   }
 
   override fun activeSessionChanged(previousSession: XDebugSessionProxy?, currentSession: XDebugSessionProxy?) {
@@ -92,7 +92,8 @@ private fun detectSourceKind(session: XDebugSessionProxy): XSourceKind {
   return if (useAlternative) XSourceKind.ALTERNATIVE else XSourceKind.MAIN
 }
 
-internal fun updateExecutionPosition(session: XDebugSessionProxy, checkAlternativePosition: Boolean = false) {
+@ApiStatus.Internal
+fun updateExecutionPosition(session: XDebugSessionProxy, checkAlternativePosition: Boolean = false) {
   val currentSession = XDebugManagerProxy.getInstance().getCurrentSessionProxy(session.project) ?: return
   if (currentSession.id != session.id) return
 

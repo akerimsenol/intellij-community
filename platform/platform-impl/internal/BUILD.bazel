@@ -34,6 +34,7 @@ jvm_library(
     "//platform/editor-ui-ex:editor-ex",
     "//platform/analysis-impl",
     "//platform/util/progress",
+    "//platform/project-frame",
     "//libraries/jcef",
     "//platform/lang-api:lang",
     "//platform/backend/workspace",
@@ -60,6 +61,7 @@ jvm_library(
     "//libraries/jbr",
     "//platform/projectModel-impl",
     "//platform/execution",
+    "//platform/kernel/rpc",
   ]
 )
 ### auto-generated section `build intellij.platform.ide.internal` end

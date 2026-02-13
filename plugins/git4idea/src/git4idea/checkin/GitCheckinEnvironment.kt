@@ -20,8 +20,19 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.openapi.vcs.*
-import com.intellij.openapi.vcs.changes.*
+import com.intellij.openapi.vcs.CheckinProjectPanel
+import com.intellij.openapi.vcs.FilePath
+import com.intellij.openapi.vcs.IssueNavigationConfiguration
+import com.intellij.openapi.vcs.VcsException
+import com.intellij.openapi.vcs.VcsRoot
+import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangeListChange
+import com.intellij.openapi.vcs.changes.ChangeListManager
+import com.intellij.openapi.vcs.changes.ChangesUtil
+import com.intellij.openapi.vcs.changes.CommitContext
+import com.intellij.openapi.vcs.changes.CurrentContentRevision
+import com.intellij.openapi.vcs.changes.LocalChangeList
+import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.openapi.vcs.checkin.CheckinChangeListSpecificComponent
 import com.intellij.openapi.vcs.checkin.CheckinEnvironment
 import com.intellij.openapi.vcs.checkin.PostCommitChangeConverter
@@ -65,7 +76,7 @@ import java.io.IOException
 import java.io.OutputStreamWriter
 import java.nio.file.Files
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
 import java.util.concurrent.CompletableFuture
 import javax.swing.JComponent
 
@@ -265,7 +276,6 @@ class GitCheckinEnvironment(private val myProject: Project) : CheckinEnvironment
     ): List<VcsException> {
       val exceptions = mutableListOf<VcsException>()
       val project = repository.project
-      val root = repository.root
 
       try {
         // Stage partial changes
@@ -277,10 +287,8 @@ class GitCheckinEnvironment(private val myProject: Project) : CheckinEnvironment
         if (!exceptions.isEmpty()) return exceptions
         changedWithIndex.addAll(caseOnlyRenameChanges)
 
-        runWithMessageFile(project, root, message) { messageFile: File ->
-          exceptions.addAll(commitUsingIndex(project, repository, changes, changedWithIndex,
-                                             messageFile, commitOptions))
-        }
+        exceptions.addAll(commitUsingIndex(project, repository, changes, changedWithIndex,
+                                           message, commitOptions))
         if (!exceptions.isEmpty()) return exceptions
 
         applyPartialChanges(partialCommitHelpers)
@@ -304,8 +312,32 @@ class GitCheckinEnvironment(private val myProject: Project) : CheckinEnvironment
       repository: GitRepository,
       rootChanges: Collection<ChangedPath>,
       changedWithIndex: Set<ChangedPath>,
+      message: String,
+      commitOptions: GitCommitOptions,
+    ): List<VcsException> = stageAndCommit(project, repository, rootChanges, changedWithIndex, commitOptions) { committer ->
+      committer.commitStaged(message)
+    }
+
+    @Deprecated("Use commitUsingIndex(..., message: String, ...) instead")
+    @JvmStatic
+    fun commitUsingIndex(
+      project: Project,
+      repository: GitRepository,
+      rootChanges: Collection<ChangedPath>,
+      changedWithIndex: Set<ChangedPath>,
       messageFile: File,
       commitOptions: GitCommitOptions,
+    ): List<VcsException> = stageAndCommit(project, repository, rootChanges, changedWithIndex, commitOptions) { committer ->
+      committer.commitStaged(messageFile)
+    }
+
+    private fun stageAndCommit(
+      project: Project,
+      repository: GitRepository,
+      rootChanges: Collection<ChangedPath>,
+      changedWithIndex: Set<ChangedPath>,
+      commitOptions: GitCommitOptions,
+      commitStaged: (GitRepositoryCommitter) -> Unit,
     ): List<VcsException> {
       val exceptions = mutableListOf<VcsException>()
       try {
@@ -333,7 +365,7 @@ class GitCheckinEnvironment(private val myProject: Project) : CheckinEnvironment
           // Commit the staging area
           LOG.debug("Performing commit...")
           val committer = GitRepositoryCommitter(repository, commitOptions)
-          committer.commitStaged(messageFile)
+          commitStaged(committer)
         }
       }
       catch (e: VcsException) {
@@ -534,7 +566,6 @@ class GitCheckinEnvironment(private val myProject: Project) : CheckinEnvironment
       commitOptions: GitCommitOptions,
     ): Pair<Collection<CommitChange>, List<VcsException>> {
       val project = repository.project
-      val root = repository.root
 
       val providers = GitCheckinExplicitMovementProvider.EP_NAME.extensionList.filter { it.isEnabled(project) }
 
@@ -562,10 +593,8 @@ class GitCheckinEnvironment(private val myProject: Project) : CheckinEnvironment
         val (movedChanges, newRootChanges) = addExplicitMovementsToIndex(repository, changes, movedPaths)
                                              ?: return Pair(changes, exceptions)
 
-        runWithMessageFile(project, root, newMessage) { moveMessageFile ->
-          exceptions.addAll(commitUsingIndex(project, repository, movedChanges, HashSet(movedChanges),
-                                             moveMessageFile, commitOptions))
-        }
+        exceptions.addAll(commitUsingIndex(project, repository, movedChanges, HashSet(movedChanges),
+                                           newMessage, commitOptions))
 
         val committedMovements = movedChanges.map { Couple.of(it.beforePath, it.afterPath) }
         for (provider in providers) {

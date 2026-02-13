@@ -6,10 +6,17 @@ import com.intellij.collaboration.api.dto.GraphQLCursorPageInfoDTO
 import com.intellij.collaboration.api.dto.GraphQLFragment
 import org.jetbrains.plugins.gitlab.api.GitLabEdition
 import org.jetbrains.plugins.gitlab.api.SinceGitLab
-import org.jetbrains.plugins.gitlab.api.dto.*
+import org.jetbrains.plugins.gitlab.api.dto.GitLabCommitDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabDiffRefs
+import org.jetbrains.plugins.gitlab.api.dto.GitLabLabelGQLDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabMergeRequestPermissionsDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabPipelineDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabProjectDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabReviewerDTO
+import org.jetbrains.plugins.gitlab.api.dto.GitLabUserDTO
 import org.jetbrains.plugins.gitlab.mergerequest.data.GitLabMergeRequestState
 import org.jetbrains.plugins.gitlab.mergerequest.data.GitLabMergeStatus
-import java.util.*
+import java.util.Date
 
 @SinceGitLab("12.0")
 @GraphQLFragment("/graphql/fragment/mergeRequest.graphql")
@@ -53,7 +60,7 @@ class GitLabMergeRequestDTO(
   @SinceGitLab("14.7")
   val commits: List<GitLabCommitDTO>? = commits?.nodes
 
-  val labels: List<GitLabLabelDTO> = labels.nodes
+  val labels: List<GitLabLabelGQLDTO> = labels.nodes
 
   @SinceGitLab("13.5")
   class UserCoreConnection(
@@ -82,6 +89,6 @@ class GitLabMergeRequestDTO(
   @SinceGitLab("12.4")
   class LabelConnection(
     pageInfo: GraphQLCursorPageInfoDTO,
-    nodes: List<GitLabLabelDTO>
-  ) : GraphQLConnectionDTO<GitLabLabelDTO>(pageInfo, nodes)
+    nodes: List<GitLabLabelGQLDTO>
+  ) : GraphQLConnectionDTO<GitLabLabelGQLDTO>(pageInfo, nodes)
 }

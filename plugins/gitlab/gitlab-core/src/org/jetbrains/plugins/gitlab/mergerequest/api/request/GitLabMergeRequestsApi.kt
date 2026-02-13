@@ -8,20 +8,65 @@ import com.intellij.collaboration.api.json.loadJsonValue
 import com.intellij.collaboration.util.resolveRelative
 import com.intellij.collaboration.util.withQuery
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.plugins.gitlab.api.*
+import org.jetbrains.plugins.gitlab.api.GitLabApi
+import org.jetbrains.plugins.gitlab.api.GitLabEdition
+import org.jetbrains.plugins.gitlab.api.GitLabGQLQuery
+import org.jetbrains.plugins.gitlab.api.GitLabGidData
+import org.jetbrains.plugins.gitlab.api.GitLabProjectCoordinates
+import org.jetbrains.plugins.gitlab.api.SinceGitLab
 import org.jetbrains.plugins.gitlab.api.dto.GitLabGraphQLMutationResultDTO
 import org.jetbrains.plugins.gitlab.api.dto.GitLabReviewerDTO
 import org.jetbrains.plugins.gitlab.api.dto.GitLabUserDTO
+import org.jetbrains.plugins.gitlab.api.gitLabQuery
+import org.jetbrains.plugins.gitlab.api.restApiUri
+import org.jetbrains.plugins.gitlab.api.withErrorStats
+import org.jetbrains.plugins.gitlab.api.withQuery
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestByBranchDTO
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestDTO
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestMetricsDTO
 import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestRebaseDTO
+import org.jetbrains.plugins.gitlab.mergerequest.api.dto.GitLabMergeRequestShortRestDTO
 import org.jetbrains.plugins.gitlab.mergerequest.data.GitLabMergeRequestState
 import org.jetbrains.plugins.gitlab.mergerequest.data.asApiParameter
 import org.jetbrains.plugins.gitlab.util.GitLabApiRequestName
 import java.net.URI
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+
+/**
+ * Creates a merge request
+ *
+ * Note: reviewer_ids parameter has different behavior depending on the user's subscription plan
+ *  [org.jetbrains.plugins.gitlab.api.data.GitLabPlan.FREE] -- sets only one reviewer from the list (the last one)
+ *  OTHER -- sets all reviewers from the list
+ */
+@SinceGitLab("14.0", note = "No exact version, but definitely exists in minimal")
+suspend fun GitLabApi.Rest.createMergeRequest(
+  project: GitLabProjectCoordinates,
+  sourceBranch: String,
+  targetBranch: String,
+  title: String,
+  description: String? = null,
+  reviewerIds: List<String>? = null,
+  assigneeIds: List<String>? = null,
+  labels: List<String>? = null
+): HttpResponse<out GitLabMergeRequestShortRestDTO> {
+  val uri = project.restApiUri
+    .resolveRelative("merge_requests")
+    .withQuery {
+      "source_branch" eq sourceBranch
+      "target_branch" eq targetBranch
+      "title" eq title
+      "description" eq description
+      "reviewer_ids" eq reviewerIds
+      "assignee_ids" eq assigneeIds
+      "labels" eq labels
+    }
+  val request = request(uri).POST(HttpRequest.BodyPublishers.noBody()).build()
+  return withErrorStats(GitLabApiRequestName.REST_CREATE_MERGE_REQUEST) {
+    loadJsonValue(request)
+  }
+}
 
 @SinceGitLab("7.0", note = "?search available since 10.4, ?scope since 9.5")
 fun getMergeRequestListURI(project: GitLabProjectCoordinates,
@@ -170,11 +215,13 @@ suspend fun GitLabApi.Rest.mergeRequestSetReviewers(
   mrIid: String,
   reviewers: List<GitLabUserDTO>
 ): HttpResponse<out Unit> {
-  val uri = URI(project.restApiUri
-                  .resolveRelative("merge_requests")
-                  .resolveRelative(mrIid).toString()
-                // Dumb hack: IDs are of course URLs rather than numbers, but this endpoint requires a number.
-                + "?reviewer_ids=${reviewers.joinToString(",") { it.id.substringAfterLast('/') }}")
+  val reviewerIds = reviewers.map { GitLabGidData(it.id).guessRestId() }
+  val uri = project.restApiUri
+    .resolveRelative("merge_requests")
+    .resolveRelative(mrIid)
+    .withQuery {
+      "reviewer_ids" eq reviewerIds
+    }
   val request = request(uri)
     .PUT(HttpRequest.BodyPublishers.noBody()).build()
   return withErrorStats(GitLabApiRequestName.REST_PUT_MERGE_REQUEST_REVIEWERS) {

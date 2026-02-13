@@ -15,7 +15,11 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.getOrHandleException
 import com.intellij.openapi.externalSystem.util.environment.Environment
 import com.intellij.openapi.options.ShowSettingsUtil
-import com.intellij.openapi.progress.*
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
+import com.intellij.openapi.progress.coroutineToIndicator
+import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.JdkFinder
@@ -30,9 +34,12 @@ import com.intellij.openapi.roots.ex.ProjectRootManagerEx
 import com.intellij.openapi.roots.ui.configuration.ProjectStructureConfigurable
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.eel.EelApi
+import com.intellij.platform.eel.EelExecApi
 import com.intellij.platform.eel.LocalEelApi
+import com.intellij.platform.eel.environmentVariables
 import com.intellij.platform.eel.fs.EelFileSystemApi
 import com.intellij.platform.eel.fs.getPath
+import com.intellij.platform.eel.isWindows
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.asNioPath
 import com.intellij.platform.eel.provider.getEelDescriptor
@@ -53,8 +60,15 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.idea.maven.config.MavenConfig
 import org.jetbrains.idea.maven.config.MavenConfigSettings
 import org.jetbrains.idea.maven.execution.SyncBundle
-import org.jetbrains.idea.maven.project.*
+import org.jetbrains.idea.maven.project.MavenConfigurableBundle
+import org.jetbrains.idea.maven.project.MavenHomeType
+import org.jetbrains.idea.maven.project.MavenInSpecificPath
+import org.jetbrains.idea.maven.project.MavenProjectBundle
+import org.jetbrains.idea.maven.project.MavenProjectsManager
+import org.jetbrains.idea.maven.project.StaticResolvedMavenHomeType
+import org.jetbrains.idea.maven.project.staticOrBundled
 import org.jetbrains.idea.maven.server.MavenServerManager
+import org.jetbrains.idea.maven.server.MavenServerUtil
 import org.jetbrains.idea.maven.utils.MavenUtil.CONF_DIR
 import org.jetbrains.idea.maven.utils.MavenUtil.DOT_M2_DIR
 import org.jetbrains.idea.maven.utils.MavenUtil.ENV_M2_HOME
@@ -72,6 +86,7 @@ import org.jetbrains.idea.maven.utils.MavenUtil.resolveGlobalSettingsFile
 import org.jetbrains.idea.maven.utils.MavenUtil.resolveUserSettingsPath
 import java.io.IOException
 import java.nio.file.Path
+import java.util.Properties
 import javax.swing.event.HyperlinkEvent
 
 object MavenEelUtil {
@@ -141,8 +156,7 @@ object MavenEelUtil {
     }
   }
 
-  @JvmStatic
-  fun EelApi.resolveRepository(
+  suspend fun EelApi.resolveRepository(
     overriddenRepository: String?,
     mavenHome: StaticResolvedMavenHomeType,
     overriddenUserSettingsFile: String?,
@@ -220,7 +234,12 @@ object MavenEelUtil {
     mavenHomeType: StaticResolvedMavenHomeType,
     overriddenUserSettingsFile: String?,
   ): Path {
-    return runBlockingMaybeCancellable { resolveLocalRepositoryAsync(project, overriddenLocalRepository, mavenHomeType, overriddenUserSettingsFile) }
+    return runBlockingMaybeCancellable {
+      resolveLocalRepositoryAsync(project,
+                                  overriddenLocalRepository,
+                                  mavenHomeType,
+                                  overriddenUserSettingsFile)
+    }
   }
 
   suspend fun resolveUserSettingsPathAsync(overriddenUserSettingsFile: String?, project: Project?): Path {
@@ -258,6 +277,8 @@ object MavenEelUtil {
         return Path.of(localRepoHome)
       }
       else {
+
+        val api = project.resolveM2DirAsync().getEelDescriptor().toEelApi()
         doResolveLocalRepository(
           resolveUserSettingsPathAsync(overriddenUserSettingsFile, project),
           resolveGlobalSettingsFile(mavenHomeType)
@@ -270,6 +291,17 @@ object MavenEelUtil {
     }
     catch (e: IOException) {
       result
+    }
+  }
+
+  suspend fun getMavenProperties(api: EelApi): Properties {
+    try {
+      return MavenServerUtil.mavenPropsFromEnvironment(api.exec.environmentVariables().eelIt().await(), api.descriptor.osFamily.isWindows)
+
+    }
+    catch (err: EelExecApi.EnvironmentVariablesException) {
+      MavenLog.LOG.warn("Cannot extract env parameters:", err)
+      return Properties()
     }
   }
 
@@ -384,10 +416,14 @@ object MavenEelUtil {
         }.firstOrNull()
         if (sdkPath != null) {
           WriteAction.runAndWait<RuntimeException> {
-            val jdkName = SdkConfigurationUtil.createUniqueSdkName(JavaSdk.getInstance(), sdkPath,
-                                                                   ProjectJdkTable.getInstance().allJdks.toList())
+            val jdkTable = ProjectJdkTable.getInstance(project)
+            val jdkName = SdkConfigurationUtil.createUniqueSdkName(
+              JavaSdk.getInstance(),
+              sdkPath,
+              jdkTable.allJdks.toList()
+            )
             val newJdk = JavaSdk.getInstance().createJdk(jdkName, sdkPath)
-            ProjectJdkTable.getInstance().addJdk(newJdk)
+            jdkTable.addJdk(newJdk)
             ProjectRootManagerEx.getInstance(project).projectSdk = newJdk
             notification.hideBalloon()
           }
@@ -432,10 +468,14 @@ object MavenEelUtil {
         val sdkPath = service<JdkFinder>().suggestHomePaths(project).firstOrNull()
         if (sdkPath != null) {
           edtWriteAction {
-            val jdkName = SdkConfigurationUtil.createUniqueSdkName(JavaSdk.getInstance(), sdkPath,
-                                                                   ProjectJdkTable.getInstance().allJdks.toList())
+            val jdkTable = ProjectJdkTable.getInstance(project)
+            val jdkName = SdkConfigurationUtil.createUniqueSdkName(
+              JavaSdk.getInstance(),
+              sdkPath,
+              jdkTable.allJdks.toList()
+            )
             val newJdk = JavaSdk.getInstance().createJdk(jdkName, sdkPath)
-            ProjectJdkTable.getInstance().addJdk(newJdk)
+            jdkTable.addJdk(newJdk)
             ProjectRootManagerEx.getInstance(project).projectSdk = newJdk
             notification.hideBalloon()
           }

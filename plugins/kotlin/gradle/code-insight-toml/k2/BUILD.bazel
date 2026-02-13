@@ -24,6 +24,7 @@ jvm_library(
     "//platform/core-impl",
     "//platform/util",
     "//java/java-psi-impl:psi-impl",
+    "//plugins/gradle/java/toml",
   ]
 )
 ### auto-generated section `build intellij.kotlin.gradle.codeInsight.toml.k2` end

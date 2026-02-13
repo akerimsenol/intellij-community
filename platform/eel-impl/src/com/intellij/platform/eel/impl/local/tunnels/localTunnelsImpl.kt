@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.platform.eel.impl.local.tunnels
 
 import com.intellij.openapi.application.ApplicationManager
@@ -7,7 +7,14 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.fileLogger
 import com.intellij.platform.eel.EelConnectionError
 import com.intellij.platform.eel.EelIpPreference
-import com.intellij.platform.eel.EelTunnelsApi.*
+import com.intellij.platform.eel.EelTunnelsApi.Connection
+import com.intellij.platform.eel.EelTunnelsApi.ConnectionAcceptor
+import com.intellij.platform.eel.EelTunnelsApi.GetAcceptorForRemotePort
+import com.intellij.platform.eel.EelTunnelsApi.GetConnectionToRemotePortArgs
+import com.intellij.platform.eel.EelTunnelsApi.HostAddress
+import com.intellij.platform.eel.EelTunnelsApi.ListenOnUnixSocketResult
+import com.intellij.platform.eel.EelTunnelsApi.ListenOnUnixSocketTemporaryPathOptions
+import com.intellij.platform.eel.EelTunnelsApi.ResolvedSocketAddress
 import com.intellij.platform.eel.EelTunnelsPosixApi
 import com.intellij.platform.eel.EelTunnelsWindowsApi
 import com.intellij.platform.eel.channels.EelReceiveChannel
@@ -15,13 +22,31 @@ import com.intellij.platform.eel.channels.EelSendChannel
 import com.intellij.platform.eel.impl.asResolvedSocketAddress
 import com.intellij.platform.eel.path.EelPath
 import com.intellij.platform.eel.provider.LocalEelDescriptor
-import com.intellij.platform.eel.provider.utils.*
-import kotlinx.coroutines.*
+import com.intellij.platform.eel.provider.utils.CopyError
+import com.intellij.platform.eel.provider.utils.EelPipe
+import com.intellij.platform.eel.provider.utils.asEelChannel
+import com.intellij.platform.eel.provider.utils.consumeAsEelChannel
+import com.intellij.platform.eel.provider.utils.copy
+import com.intellij.util.io.computeDetached
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.net.*
+import java.net.BindException
+import java.net.InetSocketAddress
+import java.net.ProtocolFamily
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
@@ -160,15 +185,18 @@ private suspend fun getConnectionToRemotePortImpl(args: GetConnectionToRemotePor
   SocketAdapter(socketChannel)
 }
 
-private fun getAcceptorForRemotePortImpl(args: GetAcceptorForRemotePort): ConnectionAcceptor {
-  val channel = try {
-    ServerSocketChannel.open().apply {
-      bind(args.asInetSocketAddress)
-      logger.info("Listening for $localAddress")
+@OptIn(DelicateCoroutinesApi::class)
+private suspend fun getAcceptorForRemotePortImpl(args: GetAcceptorForRemotePort): ConnectionAcceptor {
+  val channel = computeDetached {
+    try {
+      ServerSocketChannel.open().apply {
+        bind(args.asInetSocketAddress, 50)  // Default backlog size, same as ServerSocket default.
+        logger.info("Listening for $localAddress")
+      }
     }
-  }
-  catch (e: IOException) {
-    throw EelConnectionError.UnknownFailure(e.localizedMessage, e)
+    catch (e: IOException) {
+      throw EelConnectionError.UnknownFailure(e.localizedMessage, e)
+    }
   }
   args.configureServerSocket(ConfigurableServerSocketImpl(channel.socket()))
   return ConnectionAcceptorImpl(channel)
@@ -184,6 +212,10 @@ private val EelIpPreference.protocolFamily: ProtocolFamily?
 private val HostAddress.asInetSocketAddress: InetSocketAddress get() = InetSocketAddress(hostname, port.toInt())
 
 private class ConnectionAcceptorImpl(private val boundServerSocket: ServerSocketChannel) : ConnectionAcceptor {
+  private val _incomingConnections = Channel<Connection>()
+  override val incomingConnections: ReceiveChannel<Connection> = _incomingConnections
+  override val boundAddress: ResolvedSocketAddress = boundServerSocket.localAddress.asResolvedSocketAddress
+
   private val listenSocket: Job
 
   init {
@@ -219,12 +251,10 @@ private class ConnectionAcceptorImpl(private val boundServerSocket: ServerSocket
     }
   }
 
-  private val _incomingConnections = Channel<Connection>()
-  override val incomingConnections: ReceiveChannel<Connection> = _incomingConnections
-  override val boundAddress: ResolvedSocketAddress = boundServerSocket.localAddress.asResolvedSocketAddress
 
   override suspend fun close() {
     closeImpl()
+    listenSocket.join()
   }
 
   private fun closeImpl(err: Throwable? = null) {

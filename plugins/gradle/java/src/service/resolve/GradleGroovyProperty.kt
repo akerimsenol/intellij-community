@@ -26,7 +26,7 @@ class GradleGroovyProperty(
   override fun getIcon(flags: Int): Icon = IconManager.getInstance().getPlatformIcon(PlatformIcons.Property)
 
   companion object {
-    internal const val EXTENSION_PROPERTY : String = "via ext"
+    const val EXTENSION_PROPERTY : String = "via ext"
   }
 
   override fun getOriginInfo(): String = EXTENSION_PROPERTY

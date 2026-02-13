@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,7 +14,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.Composable
@@ -24,8 +27,15 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.testTag
@@ -33,6 +43,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.intellij.python.community.execService.ConcurrentProcessWeight
 import com.intellij.python.processOutput.impl.ProcessOutputBundle.message
 import com.intellij.python.processOutput.impl.ProcessOutputController
 import com.intellij.python.processOutput.impl.TreeFilter
@@ -45,8 +56,12 @@ import com.intellij.python.processOutput.impl.ui.processIsError
 import com.jetbrains.python.NON_INTERACTIVE_ROOT_TRACE_CONTEXT
 import kotlin.time.Instant
 import kotlinx.collections.immutable.persistentListOf
+import org.jetbrains.jewel.bridge.icon.fromPlatformIcon
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import org.jetbrains.jewel.foundation.lazy.tree.Tree
+import org.jetbrains.jewel.foundation.modifier.thenIf
 import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.component.CircularProgressIndicator
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.LazyTree
 import org.jetbrains.jewel.ui.component.Text
@@ -56,77 +71,50 @@ import org.jetbrains.jewel.ui.component.VerticallyScrollableContainer
 import org.jetbrains.jewel.ui.component.styling.LazyTreeMetrics
 import org.jetbrains.jewel.ui.component.styling.LazyTreeStyle
 import org.jetbrains.jewel.ui.component.styling.SimpleListItemMetrics
+import org.jetbrains.jewel.ui.icon.IconKey
+import org.jetbrains.jewel.ui.icon.IntelliJIconKey
 import org.jetbrains.jewel.ui.theme.treeStyle
 
-@OptIn(ExperimentalJewelApi::class)
+private object TreeSectionStyling {
+    const val ERROR_CUTOUT_OFFSET = 6
+    const val ERROR_CUTOUT_RADIUS = 13f
+    const val BACKGROUND_PROCESS_ALPHA = 0.5f
+    val ERROR_ICON_OFFSET = 2.dp
+    val ERROR_ICON_SIZE = 10.dp
+    val SEARCH_FIELD_PADDING = PaddingValues(start = 1.dp, top = 2.dp, bottom = 2.dp)
+    val SEARCH_FIELD_CLEAR_ICON_SPACER_WIDTH = 16.dp
+    val SEARCH_FIELD_MARGIN_END = 8.dp
+    val TREE_ITEM_INNER_PADDING = PaddingValues(horizontal = 4.dp)
+    val TREE_ITEM_OUTER_PADDING = PaddingValues(all = 1.dp)
+    val TREE_COLUMN_PADDING = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+    val TREE_ROW_HEIGHT = 24.dp
+    val TREE_ITEM_HORIZONTAL_ARRANGEMENT = 6.dp
+    val TREE_ITEM_CONTEXT_PADDING = PaddingValues(start = 3.dp)
+    val TREE_ITEM_PROCESS_PADDING = PaddingValues(start = 21.dp)
+    val TREE_ITEM_PROCESS_WEIGHT_PADDING = PaddingValues(end = 3.dp)
+    val TREE_ITEM_TIME_PADDING = PaddingValues(end = 6.dp)
+}
+
+private enum class ErrorKind {
+    NONE,
+    NORMAL,
+    CRITICAL,
+}
+
 @Composable
 internal fun TreeSection(controller: ProcessOutputController) {
-    val selectableLazyListState = remember { controller.processTreeUiState.selectableLazyListState }
-
     Column(modifier = Modifier.fillMaxSize()) {
         val tree by controller.processTreeUiState.tree.collectAsState()
-        val filters = remember { controller.processTreeUiState.filters }
-        val isTreeEmpty = remember(tree) { tree.isEmpty() }
 
         TreeToolbar(
             controller = controller,
-            areExpansionActionsEnabled = !isTreeEmpty,
+            areExpansionActionsEnabled = !tree.isEmpty(),
         )
 
-        tree.takeIf { !it.isEmpty() }
-            ?.also {
-                VerticallyScrollableContainer(
-                    scrollState = selectableLazyListState.lazyListState as ScrollableState,
-                ) {
-                    val treeState = remember { controller.processTreeUiState.treeState }
-                    val style = JewelTheme.treeStyle
-
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        // Seems like the current implementation keeps track of all previous trees,
-                        // causing OOM issues. Wrapping it in `key(tree)` will force a full
-                        // recomposition of the tree, removing any garbage that was not collected.
-                        key(tree) {
-                            LazyTree(
-                                tree = tree,
-                                modifier = Modifier.fillMaxSize(),
-                                treeState = treeState,
-                                onSelectionChange = {
-                                    val node = it.firstOrNull()?.data
-
-                                    if (node is TreeNode.Process) {
-                                        controller.selectProcess(node.process)
-                                    } else {
-                                        controller.selectProcess(null)
-                                    }
-                                },
-                                style = LazyTreeStyle(
-                                    colors = style.colors,
-                                    metrics = LazyTreeMetrics(
-                                        indentSize = style.metrics.indentSize,
-                                        elementMinHeight = style.metrics.elementMinHeight,
-                                        chevronContentGap = style.metrics.chevronContentGap,
-                                        simpleListItemMetrics = SimpleListItemMetrics(
-                                            innerPadding = PaddingValues(horizontal = 4.dp),
-                                            outerPadding = PaddingValues(1.dp),
-                                            selectionBackgroundCornerSize =
-                                                style.metrics.simpleListItemMetrics.selectionBackgroundCornerSize,
-                                            iconTextGap = style.metrics.simpleListItemMetrics.iconTextGap,
-                                        ),
-                                    ),
-                                    icons = style.icons,
-                                ),
-                                interactionSource = remember { MutableInteractionSource() },
-                            ) {
-                                TreeRow(it.data, filters.contains(TreeFilter.ShowTime))
-                            }
-                        }
-                    }
-                }
-            }
-            ?: EmptyContainerNotice(
-                text = message("process.output.tree.blankMessage"),
-                modifier = Modifier.testTag(TreeSectionTestTags.EMPTY_TREE_TEXT),
-            )
+        TreeContent(
+            controller = controller,
+            tree = tree,
+        )
     }
 }
 
@@ -154,7 +142,7 @@ private fun TreeToolbar(
             state = inputState,
             modifier =
                 Modifier
-                    .padding(start = 1.dp, top = 2.dp, bottom = 2.dp)
+                    .padding(TreeSectionStyling.SEARCH_FIELD_PADDING)
                     .weight(1f)
                     .focusRequester(focusRequester),
             placeholder = { Text(message("process.output.tree.search.placeholder")) },
@@ -181,10 +169,12 @@ private fun TreeToolbar(
                     },
             )
         } else {
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(
+                modifier = Modifier.width(TreeSectionStyling.SEARCH_FIELD_CLEAR_ICON_SPACER_WIDTH),
+            )
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(TreeSectionStyling.SEARCH_FIELD_MARGIN_END))
 
         FilterActionGroup(
             tooltipText = message("process.output.viewOptions.tooltip"),
@@ -222,6 +212,75 @@ private fun TreeToolbar(
     }
 }
 
+@OptIn(ExperimentalJewelApi::class)
+@Composable
+private fun TreeContent(controller: ProcessOutputController, tree: Tree<TreeNode>) {
+    val filters = remember { controller.processTreeUiState.filters }
+    val selectableLazyListState = remember { controller.processTreeUiState.selectableLazyListState }
+
+    if (!tree.isEmpty()) {
+        VerticallyScrollableContainer(
+            scrollState = selectableLazyListState.lazyListState as ScrollableState,
+        ) {
+            val treeState = remember { controller.processTreeUiState.treeState }
+            val style = JewelTheme.treeStyle
+
+            Column(modifier = Modifier.padding(TreeSectionStyling.TREE_COLUMN_PADDING)) {
+                // Seems like the current implementation keeps track of all previous trees,
+                // causing OOM issues. Wrapping it in `key(tree)` will force a full
+                // recomposition of the tree, removing any garbage that was not collected.
+                key(tree) {
+                    LazyTree(
+                        tree = tree,
+                        modifier = Modifier.fillMaxSize(),
+                        treeState = treeState,
+                        onSelectionChange = {
+                            val node = it.firstOrNull()?.data
+
+                            if (node is TreeNode.Process) {
+                                controller.selectProcess(node.process)
+                            } else {
+                                controller.selectProcess(null)
+                            }
+                        },
+                        style = LazyTreeStyle(
+                            colors = style.colors,
+                            metrics = LazyTreeMetrics(
+                                indentSize = style.metrics.indentSize,
+                                elementMinHeight = style.metrics.elementMinHeight,
+                                chevronContentGap = style.metrics.chevronContentGap,
+                                simpleListItemMetrics = SimpleListItemMetrics(
+                                    innerPadding = TreeSectionStyling.TREE_ITEM_INNER_PADDING,
+                                    outerPadding = TreeSectionStyling.TREE_ITEM_OUTER_PADDING,
+                                    selectionBackgroundCornerSize =
+                                        style
+                                            .metrics
+                                            .simpleListItemMetrics
+                                            .selectionBackgroundCornerSize,
+                                    iconTextGap =
+                                        style
+                                            .metrics
+                                            .simpleListItemMetrics
+                                            .iconTextGap,
+                                ),
+                            ),
+                            icons = style.icons,
+                        ),
+                        interactionSource = remember { MutableInteractionSource() },
+                    ) {
+                        TreeRow(it.data, filters.contains(TreeFilter.ShowTime))
+                    }
+                }
+            }
+        }
+    } else {
+        EmptyContainerNotice(
+            text = message("process.output.tree.blankMessage"),
+            modifier = Modifier.testTag(TreeSectionTestTags.EMPTY_TREE_TEXT),
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TreeRow(
@@ -229,9 +288,7 @@ private fun TreeRow(
     isTimeDisplayed: Boolean,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(24.dp),
+        modifier = Modifier.fillMaxWidth().height(TreeSectionStyling.TREE_ROW_HEIGHT),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when (node) {
@@ -245,8 +302,13 @@ private fun TreeRow(
                     modifier = Modifier.weight(1f),
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(
+                            TreeSectionStyling.TREE_ITEM_CONTEXT_PADDING,
+                        ),
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                TreeSectionStyling.TREE_ITEM_HORIZONTAL_ARRANGEMENT,
+                            ),
                     ) {
                         Icon(
                             key = Icons.Keys.Folder,
@@ -266,11 +328,19 @@ private fun TreeRow(
                 }
             }
             is TreeNode.Process -> {
+                val icon = node.icon
                 val exitInfo by node.process.exitInfo.collectAsState()
-                val isError = remember(exitInfo) {
-                    exitInfo?.takeIf { it.exitValue != 0 } != null
+                val errorKind = remember(exitInfo) {
+                    val isError = exitInfo?.takeIf { it.exitValue != 0 } != null
+
+                    when {
+                        !isError -> ErrorKind.NONE
+                        isError && exitInfo?.isCritical == false -> ErrorKind.NORMAL
+                        else -> ErrorKind.CRITICAL
+                    }
                 }
                 val isBackground = node.process.traceContext == NON_INTERACTIVE_ROOT_TRACE_CONTEXT
+                val isRunning = remember(exitInfo) { exitInfo == null }
 
                 Tooltip(
                     tooltip = {
@@ -281,74 +351,194 @@ private fun TreeRow(
                     modifier = Modifier.weight(1f),
                 ) {
                     Row(
-                        modifier = Modifier.padding(start = 21.dp)
+                        modifier = Modifier.padding(TreeSectionStyling.TREE_ITEM_PROCESS_PADDING)
                             .semantics {
-                                processIsError = isError
+                                processIsError = errorKind != ErrorKind.NONE
                                 processIsBackground = isBackground
                             },
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement =
+                            Arrangement.spacedBy(
+                                TreeSectionStyling.TREE_ITEM_HORIZONTAL_ARRANGEMENT,
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        when {
-                            isBackground && isError ->
-                                Icon(
-                                    key = Icons.Keys.ProcessBackError,
-                                    contentDescription =
-                                        message("process.output.icon.description.processBackError"),
-                                    modifier = Modifier.testTag(
-                                        TreeSectionTestTags.PROCESS_ITEM_BACK_ERROR_ICON,
-                                    ),
-                                )
-                            isBackground ->
-                                Icon(
-                                    key = Icons.Keys.ProcessBack,
-                                    contentDescription =
-                                        message("process.output.icon.description.processBack"),
-                                    modifier = Modifier.testTag(
-                                        TreeSectionTestTags.PROCESS_ITEM_BACK_ICON,
-                                    ),
-                                )
-                            isError ->
-                                Icon(
-                                    key = Icons.Keys.ProcessError,
-                                    contentDescription =
-                                        message("process.output.icon.description.processError"),
-                                    modifier = Modifier.testTag(
-                                        TreeSectionTestTags.PROCESS_ITEM_ERROR_ICON,
-                                    ),
-                                )
-                            else ->
-                                Icon(
-                                    key = Icons.Keys.Process,
-                                    contentDescription =
-                                        message("process.output.icon.description.process"),
-                                    modifier = Modifier.testTag(
-                                        TreeSectionTestTags.PROCESS_ITEM_ICON,
-                                    ),
-                                )
-                        }
+                        ProcessIcon(
+                            icon
+                                ?.let {
+                                    IntelliJIconKey.fromPlatformIcon(
+                                        icon.icon,
+                                        icon.iconClass,
+                                    )
+                                }
+                                ?: Icons.Keys.Process,
+                            errorKind,
+                            isBackground,
+                            isRunning,
+                        )
 
                         InterText(
                             text = node.process.shortenedCommandString,
                             overflow = TextOverflow.Ellipsis,
+                            color =
+                                when (errorKind) {
+                                    ErrorKind.NONE, ErrorKind.NORMAL -> Color.Unspecified
+                                    ErrorKind.CRITICAL -> Colors.ErrorText
+                                },
                         )
                     }
                 }
             }
         }
 
-        val instant = when (node) {
-            is TreeNode.Context -> Instant.fromEpochMilliseconds(node.traceContext.timestamp)
-            is TreeNode.Process -> node.process.startedAt
+        when (node) {
+            is TreeNode.Process ->
+                ProcessWeightIcon(node.process.weight)
+            is TreeNode.Context ->
+                {}
         }
 
         if (isTimeDisplayed) {
+            val instant = when (node) {
+                is TreeNode.Context -> Instant.fromEpochMilliseconds(node.traceContext.timestamp)
+                is TreeNode.Process -> node.process.startedAt
+            }
+
             InterText(
                 text = instant.formatTime(),
-                modifier = Modifier.padding(end = 6.dp),
+                modifier = Modifier.padding(TreeSectionStyling.TREE_ITEM_TIME_PADDING),
                 color = Colors.Tree.Info,
             )
         }
+    }
+}
+
+@Composable
+private fun ProcessIcon(
+    icon: IconKey,
+    errorKind: ErrorKind,
+    isBackground: Boolean,
+    isRunning: Boolean,
+) {
+    val isError = errorKind != ErrorKind.NONE
+
+    when {
+        isRunning -> {
+            CircularProgressIndicator()
+        }
+        errorKind == ErrorKind.CRITICAL -> {
+            Icon(
+                key = Icons.Keys.ResultIncorrect,
+                contentDescription =
+                    message("process.output.icon.description.criticalProcessError"),
+                tint = Colors.ErrorText,
+            )
+        }
+        else -> {
+            Box {
+                Icon(
+                    key = icon,
+                    contentDescription = message("process.output.icon.description.process"),
+                    modifier = Modifier
+                        .thenIf(isError) {
+                            // Clips a circle out of the icon on bottom right, around the place that
+                            // will be occupied by the error icon. This visually separates the error
+                            // icon from the base icon, making it look more pleasing.
+                            graphicsLayer {
+                                compositingStrategy =
+                                    CompositingStrategy.Offscreen
+                            }
+                                .drawWithContent {
+                                    drawContent()
+                                    drawCircle(
+                                        color = Color(0xFFFFFFFF),
+                                        center = Offset(
+                                            x = size.width -
+                                                TreeSectionStyling.ERROR_CUTOUT_OFFSET,
+                                            y = size.height -
+                                                TreeSectionStyling.ERROR_CUTOUT_OFFSET,
+                                        ),
+                                        radius = TreeSectionStyling.ERROR_CUTOUT_RADIUS,
+                                        blendMode = BlendMode.DstOut,
+                                    )
+                                }
+                        }
+                        .thenIf(isBackground) {
+                            alpha(TreeSectionStyling.BACKGROUND_PROCESS_ALPHA)
+                        }
+                        .testTag(
+                            when {
+                                isBackground && isError ->
+                                    TreeSectionTestTags.PROCESS_ITEM_BACK_ERROR_ICON
+                                isBackground ->
+                                    TreeSectionTestTags.PROCESS_ITEM_BACK_ICON
+                                isError ->
+                                    TreeSectionTestTags.PROCESS_ITEM_ERROR_ICON
+                                else ->
+                                    TreeSectionTestTags.PROCESS_ITEM_ICON
+                            },
+                        ),
+                )
+
+                if (isError) {
+                    Icon(
+                        key = Icons.Keys.Error,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .offset(
+                                x = TreeSectionStyling.ERROR_ICON_OFFSET,
+                                y = TreeSectionStyling.ERROR_ICON_OFFSET,
+                            )
+                            .size(TreeSectionStyling.ERROR_ICON_SIZE)
+                            .align(Alignment.BottomEnd)
+                            .thenIf(isBackground) {
+                                alpha(TreeSectionStyling.BACKGROUND_PROCESS_ALPHA)
+                            },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ProcessWeightIcon(weight: ConcurrentProcessWeight?) {
+    when (weight) {
+        ConcurrentProcessWeight.MEDIUM, ConcurrentProcessWeight.HEAVY -> {
+            val iconKey: IconKey
+            val contentDesc: String
+            val tooltipMessage: String
+
+            when (weight) {
+                ConcurrentProcessWeight.MEDIUM -> {
+                    iconKey = Icons.Keys.ProcessMedium
+                    contentDesc = message("process.output.icon.description.mediumProcess")
+                    tooltipMessage = message("process.output.tree.weight.medium.tooltip")
+                }
+                ConcurrentProcessWeight.HEAVY -> {
+                    iconKey = Icons.Keys.ProcessHeavy
+                    contentDesc = message("process.output.icon.description.heavyProcess")
+                    tooltipMessage = message("process.output.tree.weight.heavy.tooltip")
+                }
+            }
+
+            Tooltip(
+                tooltip = {
+                    Row {
+                        Text(tooltipMessage)
+                    }
+                },
+            ) {
+                Icon(
+                    key = iconKey,
+                    contentDescription = contentDesc,
+                    modifier = Modifier.padding(
+                        TreeSectionStyling.TREE_ITEM_PROCESS_WEIGHT_PADDING
+                    )
+                )
+            }
+        }
+        null, ConcurrentProcessWeight.LIGHT -> {}
     }
 }
 

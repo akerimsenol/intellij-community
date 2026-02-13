@@ -5,23 +5,41 @@ import com.intellij.psi.util.contextOfType
 import com.jetbrains.python.PyNames
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.PROTOCOL
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.PROTOCOL_EXT
-import com.jetbrains.python.psi.*
+import com.jetbrains.python.psi.PyClass
+import com.jetbrains.python.psi.PyFunction
+import com.jetbrains.python.psi.PyKnownDecorator.TYPING_RUNTIME
+import com.jetbrains.python.psi.PyKnownDecorator.TYPING_RUNTIME_CHECKABLE
+import com.jetbrains.python.psi.PyKnownDecorator.TYPING_RUNTIME_CHECKABLE_EXT
+import com.jetbrains.python.psi.PyKnownDecorator.TYPING_RUNTIME_EXT
+import com.jetbrains.python.psi.PyKnownDecoratorUtil
+import com.jetbrains.python.psi.PyPossibleClassMember
+import com.jetbrains.python.psi.PyTypeParameter
+import com.jetbrains.python.psi.PyTypedElement
 import com.jetbrains.python.psi.impl.getImplicitlyInvokedMethod
 import com.jetbrains.python.psi.impl.resolveImplicitlyInvokedMethods
 import com.jetbrains.python.psi.resolve.PyResolveContext
-import com.jetbrains.python.psi.types.*
+import com.jetbrains.python.psi.types.PyClassLikeType
+import com.jetbrains.python.psi.types.PyClassType
+import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyTypeMember
+import com.jetbrains.python.psi.types.TypeEvalContext
 
 
-fun isProtocol(classLikeType: PyClassLikeType, context: TypeEvalContext): Boolean = containsProtocol(classLikeType.getSuperClassTypes(context))
+fun PyClassLikeType.isProtocol(context: TypeEvalContext): Boolean = containsProtocol(getSuperClassTypes(context))
 
-fun isProtocol(cls: PyClass, context: TypeEvalContext): Boolean = containsProtocol(cls.getSuperClassTypes(context))
+fun PyClass.isProtocol(context: TypeEvalContext): Boolean = containsProtocol(getSuperClassTypes(context))
+
+fun PyClassType.isRuntimeCheckable(context: TypeEvalContext): Boolean = 
+  PyKnownDecoratorUtil.getKnownDecorators(pyClass, context).any {
+    it in listOf(TYPING_RUNTIME_CHECKABLE, TYPING_RUNTIME_CHECKABLE_EXT, TYPING_RUNTIME, TYPING_RUNTIME_EXT)
+  }
 
 fun matchingProtocolDefinitions(expected: PyType?, actual: PyType?, context: TypeEvalContext): Boolean = expected is PyClassLikeType &&
                                                                                                          actual is PyClassLikeType &&
                                                                                                          expected.isDefinition &&
                                                                                                          actual.isDefinition &&
-                                                                                                         isProtocol(expected, context) &&
-                                                                                                         isProtocol(actual, context)
+                                                                                                         expected.isProtocol(context) &&
+                                                                                                         actual.isProtocol(context)
 
 typealias ProtocolAndSubclassElements = Pair<PyTypeMember, List<PyTypeMember>>
 
@@ -31,7 +49,8 @@ fun inspectProtocolSubclass(protocol: PyClassType, subclass: PyClassType, contex
 
   val protocolMembers = protocol.toInstance().getAllMembers(resolveContext)
   val superClassesMembers = protocol.toInstance().getSuperClassTypes(context)
-    .filter { isProtocol(it, context) }
+    .filterNotNull()
+    .filter { it.isProtocol(context) }
     .flatMap { it.toInstance().getAllMembers(resolveContext).asIterable() }
   protocolMembers.addAll(superClassesMembers)
 
@@ -39,7 +58,7 @@ fun inspectProtocolSubclass(protocol: PyClassType, subclass: PyClassType, contex
     val protocolElement = protocolMember.element ?: continue
     if (protocolElement is PyPossibleClassMember) {
       val cls = protocolElement.containingClass
-      if (cls != null && !isProtocol(cls, context)) {
+      if (cls != null && !cls.isProtocol(context)) {
         continue
       }
     }

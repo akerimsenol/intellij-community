@@ -2,20 +2,24 @@
 package com.intellij.xdebugger.impl.frame
 
 import com.intellij.ide.dnd.DnDNativeTarget
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
+import com.intellij.platform.debugger.impl.ui.XDebuggerEntityConverter.getSessionNonSplitOnly
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.util.application
 import com.intellij.util.ui.components.BorderLayoutPanel
+import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebugSessionListener
-import com.intellij.xdebugger.impl.XDebugSessionImpl
 import com.intellij.xdebugger.impl.mixedmode.highLevelProcessOrThrow
 import com.intellij.xdebugger.impl.mixedmode.lowLevelMixedModeExtensionOrThrow
 import com.intellij.xdebugger.impl.mixedmode.lowLevelProcessOrThrow
-import com.intellij.xdebugger.impl.ui.getBottomLocalsComponentProvider
+import com.intellij.xdebugger.impl.ui.SessionTabComponentProvider
+import com.intellij.xdebugger.impl.ui.getSessionTabCustomer
 import com.intellij.xdebugger.impl.ui.useSplitterView
 import org.jetbrains.annotations.ApiStatus.Internal
 import javax.swing.JComponent
 import javax.swing.JPanel
 
+// TODO: Doesn't work when mixed-mode in RemDev : RIDER-134022
 /**
  * Allows customizing of variables view and splitting into 2 components.
  * Notice that you must provide the bottom component of the view by implementing XDebugSessionTabCustomizer in your XDebugProcess
@@ -28,26 +32,13 @@ import javax.swing.JPanel
  */
 @Internal
 class XSplitterWatchesViewImpl(
-  session: XDebugSessionImpl,
+  sessionProxy: XDebugSessionProxy,
   watchesInVariables: Boolean,
   isVertical: Boolean,
-  withToolbar: Boolean
-) : XWatchesViewImpl(session.also { checkContract(it) }, watchesInVariables, isVertical, withToolbar), DnDNativeTarget, XWatchesView {
+  withToolbar: Boolean) : XWatchesViewImpl(sessionProxy, watchesInVariables, isVertical, withToolbar), DnDNativeTarget, XWatchesView {
+
   companion object {
     private const val proportionKey = "debugger.immediate.window.in.watches.proportion.key"
-
-    private fun checkContract(session: XDebugSessionImpl) {
-      if (tryGetBottomComponentProvider(session, null) == null)
-        error("XDebugProcess must provide a properly configured XDebugSessionTabCustomizer to use XSplitterWatchesViewImpl. Read JavaDoc for details")
-    }
-
-    private fun tryGetBottomComponentProvider(session: XDebugSessionImpl, useLowLevelDebugProcessPanel: Boolean?) =
-      when (useLowLevelDebugProcessPanel) {
-        null -> session.debugProcess
-        true -> session.lowLevelProcessOrThrow
-        false -> session.highLevelProcessOrThrow
-      }.getBottomLocalsComponentProvider()
-
   }
 
   lateinit var splitter: OnePixelSplitter
@@ -61,7 +52,7 @@ class XSplitterWatchesViewImpl(
     customized = getShowCustomized()
     localsPanel = localsPanelComponent
 
-    addMixedModeListenerIfNeeded(checkNotNull(session))
+    addMixedModeListenerIfNeeded()
     return BorderLayoutPanel().also {
       myPanel = it
       updateMainPanel()
@@ -79,11 +70,17 @@ class XSplitterWatchesViewImpl(
       return
     }
 
-    val session = session ?: error("Not null session is expected here")
-    val bottomLocalsComponentProvider = tryGetBottomComponentProvider(session, useLowLevelDebugProcessPanel())
-                                        ?: error("BottomLocalsComponentProvider is not implemented to use SplitterWatchesVariablesView")
+    val monolithSession = getSessionNonSplitOnly(sessionProxy!!)
+    val evaluatorComponent =
+      if (monolithSession != null) {
+        val provider = tryGetBottomComponentProvider(monolithSession, useLowLevelDebugProcessPanel())
+                       ?: error("BottomLocalsComponentProvider is not implemented to use SplitterWatchesVariablesView")
+        provider.createBottomLocalsComponent(sessionProxy!!)
+      }
+      else
+        SessionTabComponentProvider.getInstance().createBottomLocalsComponent(sessionProxy!!)
 
-    val evaluatorComponent = bottomLocalsComponentProvider.createBottomLocalsComponent()
+
     splitter = OnePixelSplitter(true, proportionKey, 0.01f, 0.99f)
 
     splitter.firstComponent = localsPanel
@@ -92,14 +89,15 @@ class XSplitterWatchesViewImpl(
     myPanel.addToCenter(splitter)
   }
 
-  private fun addMixedModeListenerIfNeeded(session: XDebugSessionImpl) {
-    if (!session.isMixedMode) return
+  private fun addMixedModeListenerIfNeeded() {
+    val monolithSession = getSessionNonSplitOnly(sessionProxy!!) ?: return
+    if (!monolithSession.isMixedMode) return
 
-    val lowSupportsCustomization = session.lowLevelProcessOrThrow.useSplitterView()
-    val highSupportsCustomization = session.highLevelProcessOrThrow.useSplitterView()
+    val lowSupportsCustomization = monolithSession.lowLevelProcessOrThrow.useSplitterView()
+    val highSupportsCustomization = monolithSession.highLevelProcessOrThrow.useSplitterView()
     if (lowSupportsCustomization == highSupportsCustomization) return
 
-    session.addSessionListener(object : XDebugSessionListener {
+    monolithSession.addSessionListener(object : XDebugSessionListener {
       override fun stackFrameChanged() {
         updateView()
       }
@@ -121,11 +119,11 @@ class XSplitterWatchesViewImpl(
   }
 
   private fun getShowCustomized(): Boolean {
-    val session = session ?: return false
-    if (!session.isMixedMode) return true
+    val monolithSession = getSessionNonSplitOnly(sessionProxy!!) ?: return true // split debugger is on, return true to use rider default immediate window view
+    if (!monolithSession.isMixedMode) return true
 
-    val lowSupportsCustomization = session.lowLevelProcessOrThrow.useSplitterView()
-    val highSupportsCustomization = session.highLevelProcessOrThrow.useSplitterView()
+    val lowSupportsCustomization = monolithSession.lowLevelProcessOrThrow.useSplitterView()
+    val highSupportsCustomization = monolithSession.highLevelProcessOrThrow.useSplitterView()
 
     val useLowLevelPanel = useLowLevelDebugProcessPanel() == true
     val useHighLevelPanel = !useLowLevelPanel
@@ -133,9 +131,16 @@ class XSplitterWatchesViewImpl(
   }
 
   private fun useLowLevelDebugProcessPanel(): Boolean? {
-    val session = session ?: return null
-    if (!session.isMixedMode) return null
-    val frame = session.currentStackFrame ?: return false
-    return session.lowLevelMixedModeExtensionOrThrow.belongsToMe(frame)
+    val monolithSession = getSessionNonSplitOnly(sessionProxy!!) ?: return null
+    if (!monolithSession.isMixedMode) return null
+    val frame = monolithSession.currentStackFrame ?: return false
+    return monolithSession.lowLevelMixedModeExtensionOrThrow.belongsToMe(frame)
   }
+
+  private fun tryGetBottomComponentProvider(session: XDebugSession, useLowLevelDebugProcessPanel: Boolean?) =
+    when (useLowLevelDebugProcessPanel) {
+      null -> session.debugProcess
+      true -> session.lowLevelProcessOrThrow
+      false -> session.highLevelProcessOrThrow
+    }.getSessionTabCustomer()?.getBottomLocalsComponentProvider()
 }

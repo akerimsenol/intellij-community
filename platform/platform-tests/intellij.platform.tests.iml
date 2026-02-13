@@ -141,11 +141,11 @@
     <orderEntry type="library" scope="TEST" name="io.mockk" level="project" />
     <orderEntry type="library" scope="TEST" name="io.mockk.jvm" level="project" />
     <orderEntry type="module" module-name="intellij.platform.bookmarks" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.platform.plugins.testFramework" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.platform.pluginSystem.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.statistics.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.ide.bootstrap.eel" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.testFramework.junit5.projectStructure" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.platform.plugins.parser.impl" scope="TEST" />
+    <orderEntry type="module" module-name="intellij.platform.pluginSystem.parser.impl" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.ide.updateChecker" scope="TEST" />
     <orderEntry type="library" scope="TEST" name="com.jetbrains.fus.reporting.api" level="project" />
     <orderEntry type="library" scope="TEST" name="com.jetbrains.fus.reporting.ap.validation.all" level="project" />

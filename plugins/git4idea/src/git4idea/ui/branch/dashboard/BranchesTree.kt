@@ -1,9 +1,9 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package git4idea.ui.branch.dashboard
 
 import com.intellij.dvcs.DvcsUtil
 import com.intellij.dvcs.branch.GroupingKey
-import com.intellij.dvcs.repo.rpcId
+import com.intellij.dvcs.repo.repositoryId
 import com.intellij.dvcs.ui.VcsRepositoryIconsProvider
 import com.intellij.ide.dnd.TransferableList
 import com.intellij.ide.dnd.aware.DnDAwareTree
@@ -12,7 +12,12 @@ import com.intellij.idea.AppMode
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.runInEdt
-import com.intellij.openapi.components.*
+import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.State
+import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.StoragePathMacros
+import com.intellij.openapi.components.service
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -22,11 +27,18 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.codeStyle.FixingLayoutMatcher
 import com.intellij.psi.codeStyle.MinusculeMatcher
 import com.intellij.psi.codeStyle.PlatformKeyboardLayoutConverter
-import com.intellij.ui.*
+import com.intellij.ui.ColoredTreeCellRenderer
+import com.intellij.ui.FilteringSpeedSearch
+import com.intellij.ui.FilteringTree
+import com.intellij.ui.PopupHandler
+import com.intellij.ui.SearchTextField
+import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.SmartExpander
 import com.intellij.ui.hover.TreeHoverListener
 import com.intellij.ui.speedSearch.SpeedSearchSupply
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.containers.FList
+import com.intellij.util.text.matching.MatchedFragment
 import com.intellij.util.text.matching.MatchingMode
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -110,7 +122,7 @@ internal class BranchesTreeComponent(project: Project) : DnDAwareTree() {
         )
         is BranchNodeDescriptor.Group, is BranchNodeDescriptor.RemoteGroup -> GitBranchesTreeIconProvider.forGroup()
           is BranchNodeDescriptor.Repository ->
-              VcsRepositoryIconsProvider.getInstance(descriptor.repository.project).getIcon(descriptor.repository.rpcId())
+            VcsRepositoryIconsProvider.getInstance(descriptor.repository.project).getIcon(descriptor.repository.repositoryId())
         else -> null
       }
 
@@ -319,11 +331,11 @@ internal class FilteringBranchesTree(
 private val BRANCH_TREE_TRANSFER_HANDLER = object : TransferHandler() {
   override fun createTransferable(tree: JComponent): Transferable? {
     if (tree is BranchesTreeComponent) {
-      val branches = tree.getSelection().selectedBranches
-      if (branches.isEmpty()) return null
+      val refs = tree.getSelection().selectedRefs
+      if (refs.isEmpty()) return null
 
-      return object : TransferableList<BranchInfo>(branches.toList()) {
-        override fun toString(branch: BranchInfo) = branch.toString()
+      return object : TransferableList<RefInfo>(refs.toList()) {
+        override fun toString(ref: RefInfo) = ref.toString()
       }
     }
     return null
@@ -388,6 +400,8 @@ private class BranchesFilteringSpeedSearch(
   private val filterPattern = MutableStateFlow<String?>(null)
 
   private var bestMatch: BestMatch? = null
+  private var lastFilteredPattern: String? = null
+  private var patternChanged = false
 
   init {
     tree.tree.launchOnShow("Branches Tree Filterer") {
@@ -408,7 +422,7 @@ private class BranchesFilteringSpeedSearch(
     val text = tree.getText(userObject) ?: return
     val singleMatch = matchingFragments?.singleOrNull() ?: return
 
-    val matchingDegree = matcher.matchingDegree(text, false, FList.singleton(singleMatch))
+    val matchingDegree = matcher.matchingDegree(text, false, listOf(MatchedFragment(singleMatch.startOffset, singleMatch.endOffset)))
     if (matchingDegree > (bestMatch?.matchingDegree ?: 0)) {
       val node = tree.searchModel.getNode(userObject)
       bestMatch = BestMatch(matchingDegree, node)
@@ -424,6 +438,8 @@ private class BranchesFilteringSpeedSearch(
   }
 
   override fun refilter(pattern: String?) {
+    patternChanged = pattern != lastFilteredPattern
+    lastFilteredPattern = pattern
     bestMatch = null
     super.refilter(pattern)
     updateSpeedSearchBackground()
@@ -447,7 +463,9 @@ private class BranchesFilteringSpeedSearch(
     if (matcher == null || bestMatch == null) {
       super.updateSelection()
     }
-    else {
+    else if (patternChanged) {
+      // Only update selection when pattern changed (user is actively searching).
+      // When pattern is the same (tree refresh, tab switch), preserve user's selection.
       val selectionText = tree.getText(selection?.getNodeDescriptor())
       val selectionMatchingDegree = if (selectionText != null) matcher.matchingDegree(selectionText) else Int.MIN_VALUE
       if (selectionMatchingDegree < bestMatch.matchingDegree) {
@@ -479,23 +497,32 @@ private class BranchesTreeMatcher(rawPattern: String?) : MinusculeMatcher() {
 
   override val pattern: String = rawPattern.orEmpty()
 
-  override fun matchingFragments(name: String): FList<TextRange>? {
+  override fun match(name: String): List<MatchedFragment>? {
     val candidates = matchers.mapNotNull { matcher ->
-      matcher.matchingFragments(name)
+      matcher.match(name)
     }
     val fragments = candidates.maxByOrNull { fragments ->
-      fragments.sumOf { textRange -> textRange.endOffset - textRange.startOffset }
+      fragments.sumOf { textRange -> textRange.length }
     }
     return fragments
   }
 
-  override fun matchingDegree(name: String, valueStartCaseMatch: Boolean, fragments: FList<out TextRange>?): Int =
+  @Deprecated("use match(String)", replaceWith = ReplaceWith("match(name)"))
+  override fun matchingFragments(name: String): FList<TextRange>? {
+    return match(name)?.asReversed()?.asSequence()?.map { TextRange(it.startOffset, it.endOffset) }?.fold(FList.emptyList()) { acc, textRange -> acc.prepend(textRange) }
+  }
+
+  override fun matchingDegree(name: String, valueStartCaseMatch: Boolean, fragments: List<MatchedFragment>?): Int =
     matchers.singleOrNull()?.matchingDegree(name, valueStartCaseMatch, fragments)
     ?: multipleMatchersMatchingDegree(fragments)
 
-  private fun multipleMatchersMatchingDegree(fragments: FList<out TextRange>?) =
-    if (fragments?.isNotEmpty() == true) PARTIAL_MATCH_DEGREE
-    else NO_MATCH_DEGREE
+  @Deprecated("use matchingDegree(String, Boolean, List<MatchedFragment>)", replaceWith = ReplaceWith("matchingDegree(name, valueStartCaseMatch, fragments.map { MatchedFragment(it.startOffset, it.endOffset) })"))
+  override fun matchingDegree(name: String, valueStartCaseMatch: Boolean, fragments: FList<out TextRange>?): Int {
+    return matchingDegree(name, valueStartCaseMatch, fragments?.map { MatchedFragment(it.startOffset, it.endOffset) })
+  }
+
+  private fun multipleMatchersMatchingDegree(fragments: List<MatchedFragment>?) =
+    if (fragments?.isNotEmpty() == true) PARTIAL_MATCH_DEGREE else NO_MATCH_DEGREE
 
   companion object {
     const val NO_MATCH_DEGREE = 0

@@ -18,8 +18,41 @@ import com.jetbrains.python.codeInsight.functionTypeComments.psi.PyFunctionTypeA
 import com.jetbrains.python.codeInsight.functionTypeComments.psi.PyParameterTypeList
 import com.jetbrains.python.codeInsight.parseDataclassParameters
 import com.jetbrains.python.codeInsight.typeHints.PyTypeHintFile
-import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.*
-import com.jetbrains.python.psi.*
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.CLASS_VAR
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.FINAL
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.FINAL_EXT
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.getFunctionTypeAnnotation
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.getReturnTypeAnnotation
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.isFinal
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.isInsideTypeHint
+import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider.resolveToQualifiedNames
+import com.jetbrains.python.psi.PyAnnotation
+import com.jetbrains.python.psi.PyAnnotationOwner
+import com.jetbrains.python.psi.PyAugAssignmentStatement
+import com.jetbrains.python.psi.PyClass
+import com.jetbrains.python.psi.PyDecoratable
+import com.jetbrains.python.psi.PyExpression
+import com.jetbrains.python.psi.PyExpressionStatement
+import com.jetbrains.python.psi.PyForStatement
+import com.jetbrains.python.psi.PyFunction
+import com.jetbrains.python.psi.PyGlobalStatement
+import com.jetbrains.python.psi.PyImportStatementBase
+import com.jetbrains.python.psi.PyKnownDecoratorUtil
+import com.jetbrains.python.psi.PyLoopStatement
+import com.jetbrains.python.psi.PyNamedParameter
+import com.jetbrains.python.psi.PyNonlocalStatement
+import com.jetbrains.python.psi.PyQualifiedExpression
+import com.jetbrains.python.psi.PyRecursiveElementVisitor
+import com.jetbrains.python.psi.PyReferenceExpression
+import com.jetbrains.python.psi.PyReferenceOwner
+import com.jetbrains.python.psi.PyStatement
+import com.jetbrains.python.psi.PySubscriptionExpression
+import com.jetbrains.python.psi.PyTargetExpression
+import com.jetbrains.python.psi.PyTupleExpression
+import com.jetbrains.python.psi.PyTypeCommentOwner
+import com.jetbrains.python.psi.PyTypeDeclarationStatement
+import com.jetbrains.python.psi.PyUtil
+import com.jetbrains.python.psi.PyWhileStatement
 import com.jetbrains.python.psi.impl.PyClassImpl
 import com.jetbrains.python.psi.search.PySuperMethodsSearch
 import com.jetbrains.python.psi.types.PyClassType
@@ -125,6 +158,8 @@ class PyFinalInspection : PyInspection() {
       super.visitPyTargetExpression(node)
 
       val parent = PsiTreeUtil.getParentOfType(node, PyStatement::class.java)
+      if (parent is PyImportStatementBase) return
+
       if (parent is PyTypeDeclarationStatement || parent is PyGlobalStatement || parent is PyNonlocalStatement) {
         node.annotation?.value?.let {
           if (PyiUtil.isInsideStub(node) || ScopeUtil.getScopeOwner(node) is PyClass) {
@@ -323,7 +358,7 @@ class PyFinalInspection : PyInspection() {
         else -> PyUtil.multiResolveTopPriority(target, resolveContext)
       }.toMutableList()
 
-      val scopeOwner = ScopeUtil.getScopeOwner(target);
+      val scopeOwner = ScopeUtil.getScopeOwner(target)
       if (!target.isQualified && scopeOwner != null) {
         // multiResolve finds last assignments, but we need all earlier assignments
         val scope = ControlFlowCache.getScope(scopeOwner)

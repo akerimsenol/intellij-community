@@ -41,7 +41,7 @@ jvm_library(
     "//plugins/kotlin/kotlin.searching/kotlin.searching.test.k2:test",
     "//plugins/kotlin/base/util",
     "//plugins/kotlin/compiler-reference-index/tests.k2:kotlin-compilerReferenceIndex-tests",
-    "//plugins/kotlin/bundled-compiler-plugins-support",
+    "//plugins/kotlin/bundled-compiler-plugins-support:compilerPlugins-support-bundled",
     "//plugins/kotlin/uast/uast-kotlin-fir/tests",
     "//plugins/kotlin/compiler-plugins/parcelize/tests",
     "//plugins/kotlin/compiler-plugins/parcelize/tests/k2:kotlin-compilerPlugins-parcelize-tests",
@@ -68,6 +68,12 @@ jvm_library(
     "//plugins/kotlin/grazie/intellij.kotlin.grazie.tests:kotlin-grazie-tests",
     "//plugins/kotlin/intellij.kotlin.base.test:base-test",
     "//plugins/kotlin/test-framework",
+    "//plugins/kotlin/base/indices/tests",
+    "//plugins/kotlin/coverage/tests",
+    "//plugins/kotlin/maven/tests",
+    "//plugins/kotlin/project-wizard/tests",
+    "//plugins/kotlin/base/facet/tests",
+    "//plugins/kotlin/compiler-plugins/compiler-plugin-support/tests",
   ]
 )
 ### auto-generated section `build kotlin.fir-all-tests` end

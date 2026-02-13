@@ -40,10 +40,20 @@ import com.intellij.util.application
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.intellij.util.concurrency.annotations.RequiresWriteLock
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onEmpty
 import kotlinx.coroutines.flow.withIndex
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval
 import org.jetbrains.annotations.TestOnly
@@ -203,9 +213,9 @@ abstract class InlineCompletionHandler @ApiStatus.Internal constructor(
 
     session.provider.insertHandler.afterInsertion(insertEnvironment, elements)
     editor.scrollingModel.scrollToCaret(ScrollType.RELATIVE)
-    traceBlocking(InlineCompletionEventType.AfterInsert)
+    LookupManager.getActiveLookup(editor)?.hideLookup(false)
 
-    LookupManager.getActiveLookup(editor)?.hideLookup(false) //TODO: remove this
+    traceBlocking(InlineCompletionEventType.AfterInsert)
 
     afterInsert(actualProviderId)
   }

@@ -65,6 +65,8 @@ jvm_library(
     "//platform/lang-core",
     "//platform/backend/observation",
     "//platform/execution",
+    "//plugins/kotlin/preferences",
+    "//platform/util/zip",
   ]
 )
 
@@ -136,6 +138,8 @@ jvm_library(
     "//platform/backend/observation",
     "//platform/backend/observation:observation_test_lib",
     "//platform/execution",
+    "//plugins/kotlin/preferences",
+    "//platform/util/zip",
   ]
 )
 ### auto-generated section `build intellij.kotlin.base.scripting` end

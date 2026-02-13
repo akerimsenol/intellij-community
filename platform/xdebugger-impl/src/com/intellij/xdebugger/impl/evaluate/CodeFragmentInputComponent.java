@@ -5,21 +5,21 @@ import com.intellij.codeInsight.inline.completion.InlineCompletion;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.project.Project;
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy;
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy;
 import com.intellij.ui.JBSplitter;
 import com.intellij.xdebugger.XDebuggerBundle;
-import com.intellij.xdebugger.XDebuggerManager;
 import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider;
-import com.intellij.xdebugger.impl.XDebugSessionImpl;
 import com.intellij.xdebugger.impl.breakpoints.XExpressionImpl;
 import com.intellij.xdebugger.impl.ui.XDebuggerEditorBase;
 import com.intellij.xdebugger.impl.ui.XDebuggerExpressionEditor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JPanel;
+import java.awt.BorderLayout;
 
 public class CodeFragmentInputComponent extends EvaluationInputComponent {
   private final XDebuggerExpressionEditor myMultilineEditor;
@@ -38,9 +38,9 @@ public class CodeFragmentInputComponent extends EvaluationInputComponent {
       @Override
       protected void prepareEditor(EditorEx editor) {
         super.prepareEditor(editor);
-        XDebugSessionImpl session = (XDebugSessionImpl)XDebuggerManager.getInstance(project).getCurrentSession();
-        if (session != null) {
-          InlineCompletion.INSTANCE.install(editor, session.getCoroutineScope());
+        XDebugSessionProxy proxy = XDebugManagerProxy.getInstance().getCurrentSessionProxy(project);
+        if (proxy != null) {
+          InlineCompletion.INSTANCE.install(editor, proxy.getCoroutineScope());
         }
       }
     };
@@ -64,7 +64,7 @@ public class CodeFragmentInputComponent extends EvaluationInputComponent {
 
   @Override
   public void addComponent(JPanel contentPanel, JPanel resultPanel) {
-    final JBSplitter splitter = new JBSplitter(true, 0.3f, 0.2f, 0.7f);
+    final JBSplitter splitter = new JBSplitter(true, 0.5f, 0.2f, 0.7f);
     splitter.setSplitterProportionKey(mySplitterProportionKey);
     contentPanel.add(splitter, BorderLayout.CENTER);
     splitter.setFirstComponent(myMainForm.getMainPanel());

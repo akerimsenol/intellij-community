@@ -43,6 +43,7 @@ jvm_library(
     "//xml/xml-psi-impl:psi-impl",
     "//platform/execution",
     "//platform/forms_rt:java-guiForms-rt",
+    "//platform/welcome-screen-impl:welcomeScreen-impl",
   ]
 )
 
@@ -93,6 +94,7 @@ jvm_library(
     "//xml/xml-psi-impl:psi-impl",
     "//platform/execution",
     "//platform/forms_rt:java-guiForms-rt",
+    "//platform/welcome-screen-impl:welcomeScreen-impl",
   ]
 )
 ### auto-generated section `build intellij.eclipse` end

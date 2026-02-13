@@ -5,34 +5,51 @@ import com.intellij.concurrency.ConcurrentCollectionFactory
 import com.intellij.ide.vfs.rpcId
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Ref
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.platform.debugger.impl.rpc.*
+import com.intellij.platform.debugger.impl.rpc.XBreakpointApi
+import com.intellij.platform.debugger.impl.rpc.XBreakpointDto
+import com.intellij.platform.debugger.impl.rpc.XBreakpointEvent
+import com.intellij.platform.debugger.impl.rpc.XBreakpointId
+import com.intellij.platform.debugger.impl.rpc.XBreakpointTypeApi
+import com.intellij.platform.debugger.impl.rpc.XDebuggerManagerApi
 import com.intellij.platform.debugger.impl.shared.InlineBreakpointsCache
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointManagerProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointTypeProxy
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XDependentBreakpointManagerProxy
+import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointInstallationInfo
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointTypeProxy
 import com.intellij.platform.project.projectId
 import com.intellij.platform.util.coroutines.childScope
 import com.intellij.xdebugger.SplitDebuggerMode
-import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointInstallationInfo
-import com.intellij.xdebugger.impl.breakpoints.*
+import com.intellij.xdebugger.impl.breakpoints.XBreakpointItem
+import com.intellij.xdebugger.impl.breakpoints.XBreakpointsDialogState
+import com.intellij.xdebugger.impl.breakpoints.XLineBreakpointManager
 import com.intellij.xdebugger.impl.breakpoints.ui.BreakpointItem
 import fleet.rpc.client.RpcClientException
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.VisibleForTesting
 import java.util.concurrent.ConcurrentHashMap
@@ -184,7 +201,7 @@ class FrontendXBreakpointManager(private val project: Project, private val cs: C
     return newBreakpoint
   }
 
-  private fun canToggleLightBreakpoint(editor: Editor, info: XLineBreakpointInstallationInfo): Boolean {
+  private suspend fun canToggleLightBreakpoint(editor: Editor, info: XLineBreakpointInstallationInfo): Boolean {
     val type = info.types.singleOrNull() ?: return false
     if (findBreakpointsAtLine(type, info.position.file, info.position.line).isNotEmpty()) {
       return false
@@ -192,8 +209,8 @@ class FrontendXBreakpointManager(private val project: Project, private val cs: C
     if (info.isTemporary || info.isLogging) {
       return false
     }
-    val lineInfo = FrontendEditorLinesBreakpointsInfoManager.getInstance(project).getBreakpointsInfoForLineFast(editor, info.position.line)
-    return lineInfo?.singleBreakpointVariant == true
+    val lineInfo = FrontendEditorLinesBreakpointsInfoManager.getInstance(project).getBreakpointsInfoForLine(editor, info.position.line)
+    return lineInfo.singleBreakpointVariant
   }
 
   /**
@@ -203,7 +220,7 @@ class FrontendXBreakpointManager(private val project: Project, private val cs: C
   override suspend fun <T> withLightBreakpointIfPossible(
     editor: Editor?, info: XLineBreakpointInstallationInfo, block: suspend () -> T,
   ): T {
-    if (editor == null || !readAction { canToggleLightBreakpoint(editor, info) }) {
+    if (editor == null || !canToggleLightBreakpoint(editor, info)) {
       return block()
     }
     val lightBreakpointPosition = LightBreakpointPosition(info.position.file, info.position.line)
@@ -354,6 +371,12 @@ class FrontendXBreakpointManager(private val project: Project, private val cs: C
   override fun copyLineBreakpoint(breakpoint: XLineBreakpointProxy, file: VirtualFile, line: Int) {
     cs.launch {
       XBreakpointTypeApi.getInstance().copyLineBreakpoint(breakpoint.id, file.rpcId(), line)
+    }
+  }
+
+  override fun onBreakpointRemoval(breakpoint: XLineBreakpointProxy, session: XDebugSessionProxy) {
+    cs.launch {
+      XBreakpointTypeApi.getInstance().onBreakpointRemoval(breakpoint.id, session.id)
     }
   }
 

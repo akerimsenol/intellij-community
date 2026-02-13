@@ -30,8 +30,6 @@ jvm_library(
     "@lib//:jna",
     "//platform/projectModel-api:projectModel",
     "//platform/remote-core",
-    "//platform/remote-servers/api:remoteServers",
-    "//platform/remote-servers/impl",
     "//libraries/jediterm-core",
     "//libraries/jediterm-ui",
     "//platform/execution-impl",
@@ -66,6 +64,8 @@ jvm_library(
     "//platform/eel-provider",
     "//platform/util/jdom",
     "//platform/execution",
+    "//platform/observable",
+    "//platform/remote-topics/shared:rpc-topics",
   ]
 )
 ### auto-generated section `build intellij.terminal` end

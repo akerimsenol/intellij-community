@@ -14,7 +14,7 @@ import git4idea.http.GitAskPassApp
 import git4idea.http.GitAskPassAppHandler
 import kotlinx.coroutines.CoroutineScope
 import java.nio.file.Path
-import java.util.*
+import java.util.UUID
 
 /**
  * Provides the authentication mechanism for Git HTTP connections.
@@ -66,7 +66,7 @@ abstract class GitHttpAuthService(coroutineScope: CoroutineScope) : ExternalProc
   }
 }
 
-private class GitAskPassExternalProcessRest : ExternalProcessRest<GitAskPassAppHandler>(
+internal class GitAskPassExternalProcessRest : ExternalProcessRest<GitAskPassAppHandler>(
   GitAskPassAppHandler.ENTRY_POINT_NAME
 ) {
   override val externalProcessHandler: ExternalProcessHandlerService<GitAskPassAppHandler> get() = service<GitHttpAuthService>()

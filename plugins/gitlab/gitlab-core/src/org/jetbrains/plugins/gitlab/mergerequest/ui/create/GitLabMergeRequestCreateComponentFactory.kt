@@ -3,6 +3,7 @@ package org.jetbrains.plugins.gitlab.mergerequest.ui.create
 
 import com.intellij.collaboration.async.launchNow
 import com.intellij.collaboration.ui.CollaborationToolsUIUtil
+import com.intellij.collaboration.ui.LabeledListComponentsFactory
 import com.intellij.collaboration.ui.SingleValueModel
 import com.intellij.collaboration.ui.bindValueIn
 import com.intellij.collaboration.ui.codereview.commits.CommitsBrowserComponentBuilder
@@ -50,7 +51,7 @@ internal object GitLabMergeRequestCreateComponentFactory {
     val directionSelector = createDirectionSelector(directionModel)
     val commitsLoadingPanel = createCommitsPanel(project, cs, createVm)
     val textPanel = cs.createTextPanel(project, createVm)
-    val reviewersPanel = GitLabMergeRequestCreateReviewersComponentFactory.create(cs, createVm)
+    val metadataPanel = createMetadataPanel(createVm)
     val statusPanel = GitLabMergeRequestCreateStatusComponentFactory.create(cs, createVm)
     val actionsPanel = GitLabMergeRequestCreateActionsComponentFactory.create(project, cs, createVm)
 
@@ -60,7 +61,7 @@ internal object GitLabMergeRequestCreateComponentFactory {
       .addSeparator()
       .addComponent(textPanel, zeroMinWidth = true, stretchYWithWeight = 0.3f, withoutBorder = true)
       .addSeparator()
-      .addComponent(reviewersPanel, zeroMinWidth = true)
+      .addComponent(metadataPanel, zeroMinWidth = true)
       .addSeparator()
       .addComponent(statusPanel)
       .addComponent(actionsPanel, withListBackground = false)
@@ -139,5 +140,15 @@ internal object GitLabMergeRequestCreateComponentFactory {
       .create()
 
     return CollaborationToolsUIUtil.wrapWithProgressStripe(cs, createVm.commits.map { it == null }, commitsPanel)
+  }
+
+  private fun createMetadataPanel(createVm: GitLabMergeRequestCreateViewModel): JComponent {
+    val lists = buildList {
+      add(GitLabMergeRequestCreateMetadataComponentFactory.createAssigneesListPanelHandle(createVm))
+      add(GitLabMergeRequestCreateMetadataComponentFactory.createReviewersListPanelHandle(createVm))
+      add(GitLabMergeRequestCreateMetadataComponentFactory.createLabelsListPanelHandle(createVm))
+    }
+
+    return LabeledListComponentsFactory.createGrid(lists)
   }
 }

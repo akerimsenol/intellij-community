@@ -40,6 +40,7 @@ jvm_library(
     "//java/jsp-openapi:jsp",
     "//plugins/properties/properties-psi-api:psi",
     "//plugins/properties/properties-psi-impl:backend-psi",
+    "//java/java-backend:backend",
     "//jvm/jvm-analysis-api:analysis",
     "//libraries/stream",
     "//platform/core-ui",
@@ -52,7 +53,8 @@ jvm_library(
   exports = [
     "//plugins/properties:properties-backend",
     "//java/java-impl:impl",
-  ]
+  ],
+  runtime_deps = ["//platform/backend"]
 )
 
 jvm_library(
@@ -98,6 +100,7 @@ jvm_library(
     "//java/testFramework",
     "//plugins/properties/properties-psi-api:psi",
     "//plugins/properties/properties-psi-impl:backend-psi",
+    "//java/java-backend:backend",
     "//jvm/jvm-analysis-api:analysis",
     "//libraries/stream",
     "//platform/core-ui",

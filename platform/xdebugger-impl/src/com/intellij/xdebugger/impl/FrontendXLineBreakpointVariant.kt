@@ -8,11 +8,21 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
-import com.intellij.platform.debugger.impl.rpc.*
+import com.intellij.platform.debugger.impl.rpc.VariantSelectedResponse
+import com.intellij.platform.debugger.impl.rpc.XBreakpointId
+import com.intellij.platform.debugger.impl.rpc.XBreakpointTypeApi
+import com.intellij.platform.debugger.impl.rpc.XBreakpointTypeId
+import com.intellij.platform.debugger.impl.rpc.XLineBreakpointInstallationRequest
+import com.intellij.platform.debugger.impl.rpc.XLineBreakpointInstalledResponse
+import com.intellij.platform.debugger.impl.rpc.XLineBreakpointMultipleVariantResponse
+import com.intellij.platform.debugger.impl.rpc.XLineBreakpointVariantDto
+import com.intellij.platform.debugger.impl.rpc.XNoBreakpointPossibleResponse
+import com.intellij.platform.debugger.impl.rpc.XRemoveBreakpointResponse
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointInstallationInfo
 import com.intellij.platform.debugger.impl.shared.proxy.XLineBreakpointProxy
 import com.intellij.platform.project.projectId
-import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy
+import com.intellij.xdebugger.impl.breakpoints.XBreakpointUIUtil
 import com.intellij.xdebugger.impl.rpc.toRpc
 import fleet.util.channels.use
 import kotlinx.coroutines.CoroutineScope
@@ -74,15 +84,15 @@ internal fun computeBreakpointProxy(
     try {
       val breakpointManager = XDebugManagerProxy.getInstance().getBreakpointManagerProxy(project)
       breakpointManager.withLightBreakpointIfPossible(editor, info) {
-        val breakpointExists = XDebuggerUtilImpl.findBreakpointsAtLine(project, info).isNotEmpty()
+        val breakpointExists = XBreakpointUIUtil.findBreakpointsAtLine(project, info).isNotEmpty()
         val response = XBreakpointTypeApi.getInstance()
                          .toggleLineBreakpoint(project.projectId(), info.toRequest(breakpointExists))
                        ?: throw kotlin.coroutines.cancellation.CancellationException()
         when (response) {
           is XRemoveBreakpointResponse -> {
-            val breakpoint = XDebuggerUtilImpl.findBreakpointsAtLine(project, info).firstOrNull()
+            val breakpoint = XBreakpointUIUtil.findBreakpointsAtLine(project, info).firstOrNull()
             if (breakpoint != null) {
-              XDebuggerUtilImpl.removeBreakpointIfPossible(project, info, breakpoint)
+              XBreakpointUIUtil.removeBreakpointIfPossible(project, info, breakpoint)
             }
             result.complete(null)
           }

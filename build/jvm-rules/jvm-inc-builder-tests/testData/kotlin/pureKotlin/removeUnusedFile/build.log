@@ -1,0 +1,9 @@
+================ Step #1 =================
+Cleaning output files:
+  test/Bar.class
+  test/UnusedKt.class
+End of files
+Compiling files:
+End of files
+------------------------------------------
+Exit code: OK

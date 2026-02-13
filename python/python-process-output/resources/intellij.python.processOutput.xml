@@ -1,4 +1,4 @@
-<idea-plugin package="com.intellij.python.processOutput">
+<idea-plugin>
   <dependencies>
     <module name="intellij.python.community"/>
     <module name="intellij.python.sdk"/>
@@ -8,6 +8,11 @@
     <extensionPoint
       qualifiedName="com.intellij.python.processOutput.processOutputApi"
       interface="com.intellij.python.processOutput.ProcessOutputApi"
+    />
+
+    <extensionPoint
+      qualifiedName="com.intellij.python.processOutput.processOutputIconMapping"
+      interface="com.intellij.python.processOutput.ProcessOutputIconMapping"
     />
   </extensionPoints>
 </idea-plugin>

@@ -1,12 +1,14 @@
 <idea-plugin visibility="internal" package="org.jetbrains.kotlin.idea.gradleJava">
 
   <dependencies>
+    <module name="intellij.gradle"/>
     <plugin id="org.jetbrains.plugins.gradle"/>
     <module name="intellij.kotlin.gradle.tooling"/>
     <module name="intellij.kotlin.gradle.gradle"/>
     <module name="intellij.kotlin.gradle.codeInsight.common"/>
     <module name="intellij.kotlin.projectWizard.idea"/>
     <module name="intellij.kotlin.base.externalSystem"/>
+    <module name="intellij.kotlin.runConfigurations.jvm"/>
   </dependencies>
 
   <extensionPoints>
@@ -119,6 +121,7 @@
   <extensions defaultExtensionNs="org.jetbrains.kotlin">
     <projectConfigurator implementation="org.jetbrains.kotlin.idea.gradleJava.configuration.KotlinGradleModuleConfigurator"/>
     <compilerPluginConfigurator implementation="org.jetbrains.kotlin.idea.gradleJava.configuration.SpringGradleKotlinCompilerPluginProjectConfigurator"/>
+    <compilerPluginConfigurator implementation="org.jetbrains.kotlin.idea.gradleJava.configuration.JpaGradleKotlinCompilerPluginProjectConfigurator"/>
     <gradleModelFacade implementation="org.jetbrains.kotlin.idea.gradleJava.inspections.DefaultGradleModelFacade"/>
     <kotlinCompilerVersionProvider implementation="org.jetbrains.kotlin.idea.gradleJava.GradleKotlinCompilerVersionProvider"/>
   </extensions>

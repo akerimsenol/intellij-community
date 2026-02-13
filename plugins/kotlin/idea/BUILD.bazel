@@ -11,6 +11,7 @@ create_kotlinc_options(
     "org.jetbrains.kotlin.analysis.api.KaContextParameterApi",
     "org.jetbrains.kotlin.analysis.api.KaIdeApi",
     "org.jetbrains.kotlin.idea.base.util.K1ModeProjectStructureApi",
+    "org.jetbrains.kotlin.K1Deprecation",
   ],
   x_context_parameters = True
 )
@@ -90,7 +91,6 @@ jvm_library(
     "//plugins/kotlin/base/project-structure",
     "//plugins/kotlin/base/scripting/scripting.k1",
     "//platform/util/progress",
-    "//plugins/kotlin/base/external-build-system:kotlin-base-externalSystem",
     "//plugins/kotlin/base/analysis",
     "//plugins/kotlin/highlighting/highlighting-shared:kotlin-highlighting-shared",
     "//plugins/kotlin/highlighting/highlighting-k1:kotlin-highlighting-k1",
@@ -129,7 +129,6 @@ jvm_library(
     "//platform/execution",
     "//platform/lang-impl",
     "//libraries/fastutil",
-    "//platform/structuralsearch:structuralSearch",
     "//platform/duplicates-analysis",
     "//platform/code-style-impl:codeStyle-impl",
     "//libraries/markdown",

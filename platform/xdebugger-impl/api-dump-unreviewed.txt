@@ -65,8 +65,6 @@ a:com.intellij.xdebugger.attach.osHandlers.UnixAttachOSHandler
 - getUid():I
 - p:getenv(java.lang.String):java.lang.String
 - isOurProcess(I):Z
-c:com.intellij.xdebugger.impl.DebuggerSupport
-- <init>():V
 f:com.intellij.xdebugger.impl.InlayRunToCursorEditorListener
 - com.intellij.openapi.editor.event.EditorMouseListener
 - com.intellij.openapi.editor.event.EditorMouseMotionListener
@@ -108,11 +106,6 @@ c:com.intellij.xdebugger.impl.actions.AttachToProcessAction
 - com.intellij.openapi.actionSystem.AnAction
 - com.intellij.openapi.project.DumbAware
 - <init>():V
-a:com.intellij.xdebugger.impl.actions.DebuggerActionHandler
-- <init>():V
-- a:isEnabled(com.intellij.openapi.project.Project,com.intellij.openapi.actionSystem.AnActionEvent):Z
-- isHidden(com.intellij.openapi.project.Project,com.intellij.openapi.actionSystem.AnActionEvent):Z
-- a:perform(com.intellij.openapi.project.Project,com.intellij.openapi.actionSystem.AnActionEvent):V
 a:com.intellij.xdebugger.impl.actions.DebuggerToggleActionHandler
 - <init>():V
 - a:isEnabled(com.intellij.openapi.project.Project,com.intellij.openapi.actionSystem.AnActionEvent):Z
@@ -122,17 +115,14 @@ c:com.intellij.xdebugger.impl.actions.ForceRunToCursorAction
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.ForceStepIntoAction
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.ForceStepOverAction
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.MuteBreakpointAction
 - com.intellij.openapi.actionSystem.ToggleAction
 - <init>():V
@@ -157,40 +147,24 @@ c:com.intellij.xdebugger.impl.actions.RunToCursorAction
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.StepIntoAction
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.StepOutAction
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.StepOverAction
 - com.intellij.openapi.project.DumbAware
 - com.intellij.xdebugger.impl.actions.XDebuggerActionBase
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 c:com.intellij.xdebugger.impl.actions.ViewBreakpointsAction
 - com.intellij.openapi.project.DumbAwareAction
 - <init>():V
 - actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
 - getActionUpdateThread():com.intellij.openapi.actionSystem.ActionUpdateThread
-- update(com.intellij.openapi.actionSystem.AnActionEvent):V
-a:com.intellij.xdebugger.impl.actions.XDebuggerActionBase
-- com.intellij.openapi.actionSystem.AnAction
-- p:<init>():V
-- p:<init>(Z):V
-- actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- getActionUpdateThread():com.intellij.openapi.actionSystem.ActionUpdateThread
-- pa:getHandler(com.intellij.xdebugger.impl.DebuggerSupport):com.intellij.xdebugger.impl.actions.DebuggerActionHandler
-- isDumbAware():Z
-- p:isEnabled(com.intellij.openapi.actionSystem.AnActionEvent):Z
-- p:isHidden(com.intellij.openapi.actionSystem.AnActionEvent):Z
-- p:performWithHandler(com.intellij.openapi.actionSystem.AnActionEvent):Z
 - update(com.intellij.openapi.actionSystem.AnActionEvent):V
 a:com.intellij.xdebugger.impl.actions.XDebuggerSuspendedActionHandler
 - com.intellij.xdebugger.impl.actions.handlers.XDebuggerActionHandler
@@ -201,17 +175,13 @@ a:com.intellij.xdebugger.impl.actions.handlers.XDebuggerActionHandler
 - com.intellij.xdebugger.impl.actions.DebuggerActionHandler
 - <init>():V
 - isEnabled(com.intellij.openapi.project.Project,com.intellij.openapi.actionSystem.AnActionEvent):Z
-- p:isEnabled(com.intellij.xdebugger.XDebugSession,com.intellij.openapi.actionSystem.DataContext):Z
 - perform(com.intellij.openapi.project.Project,com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:perform(com.intellij.xdebugger.XDebugSession,com.intellij.openapi.actionSystem.DataContext):V
 com.intellij.xdebugger.impl.breakpoints.XBreakpointTypeWithDocumentDelegation
 - a:getDocumentForHighlighting(com.intellij.openapi.editor.Document):com.intellij.openapi.editor.Document
 f:com.intellij.xdebugger.impl.breakpoints.XBreakpointUtil
 - sf:INSTANCE:com.intellij.xdebugger.impl.breakpoints.XBreakpointUtil
 - sf:findSelectedBreakpoint(com.intellij.openapi.project.Project,com.intellij.openapi.editor.Editor):com.intellij.openapi.util.Pair
 - sf:findType(java.lang.String):com.intellij.xdebugger.breakpoints.XBreakpointType
-- sf:getAvailableLineBreakpointTypes(com.intellij.openapi.project.Project,com.intellij.xdebugger.XSourcePosition,com.intellij.openapi.editor.Editor):java.util.List
-- sf:getAvailableLineBreakpointTypes(com.intellij.openapi.project.Project,com.intellij.xdebugger.XSourcePosition,Z,com.intellij.openapi.editor.Editor):java.util.List
 - sf:getDisplayText(com.intellij.xdebugger.breakpoints.XBreakpoint):java.lang.String
 - sf:getGeneralDescription(com.intellij.xdebugger.breakpoints.XBreakpoint):java.lang.String
 - sf:getPropertyXMLDescriptions(com.intellij.xdebugger.breakpoints.XBreakpoint):java.util.List
@@ -395,8 +365,6 @@ f:com.intellij.xdebugger.impl.frame.StackInfo
 - f:component2():javax.swing.Icon
 - f:component3():com.intellij.xdebugger.frame.XExecutionStack$AdditionalDisplayInfo
 - f:component4():com.intellij.xdebugger.frame.XExecutionStack
-- f:copy(java.lang.String,javax.swing.Icon,com.intellij.xdebugger.frame.XExecutionStack$AdditionalDisplayInfo,com.intellij.xdebugger.frame.XExecutionStack):com.intellij.xdebugger.impl.frame.StackInfo
-- bs:copy$default(com.intellij.xdebugger.impl.frame.StackInfo,java.lang.String,javax.swing.Icon,com.intellij.xdebugger.frame.XExecutionStack$AdditionalDisplayInfo,com.intellij.xdebugger.frame.XExecutionStack,I,java.lang.Object):com.intellij.xdebugger.impl.frame.StackInfo
 - equals(java.lang.Object):Z
 - f:getAdditionalDisplayText():com.intellij.xdebugger.frame.XExecutionStack$AdditionalDisplayInfo
 - f:getDisplayText():java.lang.String
@@ -620,7 +588,6 @@ f:com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 - s:showXBreakpointEditorBalloon(com.intellij.openapi.project.Project,java.awt.Point,javax.swing.JComponent,Z,Z,com.intellij.xdebugger.breakpoints.XBreakpoint):V
 c:com.intellij.xdebugger.impl.ui.ExecutionPointHighlighter
 - sf:EXECUTION_POINT_HIGHLIGHTER_TOP_FRAME_KEY:com.intellij.openapi.util.Key
-- <init>(com.intellij.openapi.project.Project):V
 - <init>(com.intellij.openapi.project.Project,com.intellij.openapi.Disposable):V
 - <init>(com.intellij.openapi.project.Project,com.intellij.util.messages.MessageBusConnection):V
 - getCurrentFile():com.intellij.openapi.vfs.VirtualFile
@@ -631,8 +598,6 @@ c:com.intellij.xdebugger.impl.ui.ExecutionPointHighlighter
 - show(com.intellij.xdebugger.XSourcePosition,Z,com.intellij.openapi.editor.markup.GutterIconRenderer,Z):V
 - update(Z):V
 - updateGutterIcon(com.intellij.openapi.editor.markup.GutterIconRenderer):V
-com.intellij.xdebugger.impl.ui.SessionTabComponentProvider
-- a:createBottomLocalsComponent():javax.swing.JComponent
 f:com.intellij.xdebugger.impl.ui.TextViewer
 - com.intellij.ui.EditorTextField
 - <init>(com.intellij.openapi.editor.Document,com.intellij.openapi.project.Project,Z,com.intellij.openapi.fileTypes.FileType,Z):V
@@ -1004,23 +969,6 @@ a:com.intellij.xdebugger.impl.ui.tree.actions.XDebuggerTreeActionBase
 - p:isEnabled(com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl,com.intellij.openapi.actionSystem.AnActionEvent):Z
 - pa:perform(com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl,java.lang.String,com.intellij.openapi.actionSystem.AnActionEvent):V
 - update(com.intellij.openapi.actionSystem.AnActionEvent):V
-a:com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueActionBase
-- com.intellij.openapi.project.DumbAwareAction
-- <init>():V
-- actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent):V
-- p:addToCollector(java.util.List,com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl,com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueActionBase$ValueCollector):V
-- p:createCollector(com.intellij.openapi.actionSystem.AnActionEvent):com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueActionBase$ValueCollector
-- p:isEnabled(com.intellij.openapi.actionSystem.AnActionEvent,com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl):Z
-- update(com.intellij.openapi.actionSystem.AnActionEvent):V
-c:com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueActionBase$ValueCollector
-- <init>(com.intellij.xdebugger.impl.ui.tree.actions.XFetchValueActionBase,com.intellij.xdebugger.impl.ui.tree.XDebuggerTree):V
-- acquire():I
-- add(java.lang.String):V
-- add(java.lang.String,I):V
-- evaluationComplete(I,java.lang.String):V
-- finish():V
-- getTree():com.intellij.xdebugger.impl.ui.tree.XDebuggerTree
-- handleInCollector(com.intellij.openapi.project.Project,java.lang.String,com.intellij.xdebugger.impl.ui.tree.XDebuggerTree):V
 c:com.intellij.xdebugger.impl.ui.tree.nodes.EvaluatingExpressionRootNode
 - com.intellij.xdebugger.impl.ui.tree.nodes.XValueContainerNode
 - <init>(com.intellij.xdebugger.impl.evaluate.XDebuggerEvaluationDialog,com.intellij.xdebugger.impl.ui.tree.XDebuggerTree):V
@@ -1085,7 +1033,6 @@ c:com.intellij.xdebugger.impl.ui.tree.nodes.WatchesRootNode
 - getChildren():java.util.List
 - getLoadedChildren():java.util.List
 - getWatchChildren():java.util.List
-- getWatchExpressions():java.util.List
 - getWatches():java.util.List
 - headerNodesCount():I
 - moveDown(com.intellij.xdebugger.impl.ui.tree.nodes.WatchNode):V

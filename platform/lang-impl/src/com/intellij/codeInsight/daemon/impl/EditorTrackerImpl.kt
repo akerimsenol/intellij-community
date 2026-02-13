@@ -1,4 +1,4 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplacePutWithAssignment", "ReplaceGetOrSet")
 
 package com.intellij.codeInsight.daemon.impl
@@ -21,7 +21,7 @@ import com.intellij.openapi.wm.impl.IdeFrameImpl
 import com.intellij.openapi.wm.impl.ProjectFrameHelper
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.util.concurrency.annotations.RequiresEdt
-import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.ApiStatus.Internal
 import java.awt.Window
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
@@ -29,7 +29,7 @@ import java.beans.PropertyChangeListener
 import java.lang.ref.WeakReference
 import javax.swing.SwingUtilities
 
-@ApiStatus.Internal
+@Internal
 open class EditorTrackerImpl(@JvmField protected val project: Project) : EditorTracker, Disposable {
   private val windowToEditorsMap = HashMap<Window, MutableList<Editor>>()
   private val windowToWindowFocusListenerMap = HashMap<Window, WindowAdapter>()

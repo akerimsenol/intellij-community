@@ -1,6 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
-package org.jetbrains.kotlin.idea.completion.weighers
+package org.jetbrains.kotlin.idea.completion.impl.k2.weighers
 
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementWeigher
@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaEnumEntrySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeParameterType
 import org.jetbrains.kotlin.idea.base.analysis.api.utils.isPossiblySubTypeOf
@@ -41,8 +42,15 @@ internal object ExpectedTypeWeigher {
     fun addWeight(context: WeighingContext, lookupElement: LookupElement, symbol: KaSymbol?) {
         val expectedType = context.expectedType
 
+        // The expected type was already set elsewhere, we prefer these results
+        if (lookupElement.matchesExpectedType != null) return
+
         lookupElement.matchesExpectedType = when {
-            symbol != null -> if (expectedType != null) matchesExpectedType(symbol, expectedType) else MatchesExpectedType.NON_TYPABLE
+            symbol != null -> if (expectedType != null) {
+                // If the symbol is a Typealias, we want to use the original symbol for matching the expected type
+                val expandedSymbol = (symbol as? KaTypeAliasSymbol)?.expandedType?.expandedSymbol ?: symbol
+                matchesExpectedType(expandedSymbol, expectedType)
+            } else MatchesExpectedType.NON_TYPABLE
             lookupElement.`object` is NamedArgumentLookupObject -> MatchesExpectedType.MATCHES
             lookupElement.`object` is KeywordLookupObject && expectedType != null -> {
                 val actualType = when (lookupElement.lookupString) {
@@ -102,7 +110,7 @@ internal object ExpectedTypeWeigher {
              * Checks if [actualType] could be a subtype of [expectedType] by replacing type parameters in [expectedType]
              * with star projections and ignoring nullability.
              * Returns false for cases where either type is just a type parameter because it would result in trivial matches.
-             * See: [KaType.isPossiblySubTypeOf].
+             * See: [isPossiblySubTypeOf].
              *
              * In completion, we work with unsubstituted symbols where type parameters are not substituted.
              * This function provides a fast structural compatibility check (e.g., `List<Int>` matches `List<T>`, but not vice versa!)

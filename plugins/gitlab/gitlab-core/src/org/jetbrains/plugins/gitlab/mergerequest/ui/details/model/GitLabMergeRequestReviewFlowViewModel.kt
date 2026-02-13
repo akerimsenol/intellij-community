@@ -2,9 +2,9 @@
 package org.jetbrains.plugins.gitlab.mergerequest.ui.details.model
 
 import com.intellij.collaboration.async.childScope
-import com.intellij.collaboration.async.launchNow
 import com.intellij.collaboration.async.mapState
 import com.intellij.collaboration.async.modelFlow
+import com.intellij.collaboration.async.withInitial
 import com.intellij.collaboration.messages.CollaborationToolsBundle
 import com.intellij.collaboration.ui.codereview.action.ReviewMergeCommitMessageDialog
 import com.intellij.collaboration.ui.codereview.details.data.ReviewRequestState
@@ -12,14 +12,31 @@ import com.intellij.collaboration.ui.codereview.details.data.ReviewRole
 import com.intellij.collaboration.ui.codereview.details.data.ReviewState
 import com.intellij.collaboration.ui.codereview.details.model.CodeReviewFlowViewModel
 import com.intellij.collaboration.ui.icon.IconsProvider
+import com.intellij.collaboration.util.IncrementallyComputedValue
 import com.intellij.collaboration.util.SingleCoroutineLauncher
+import com.intellij.collaboration.util.collectIncrementallyTo
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.ui.awt.RelativePoint
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gitlab.api.SinceGitLab
 import org.jetbrains.plugins.gitlab.api.dto.GitLabCiJobDTO
@@ -33,9 +50,7 @@ import org.jetbrains.plugins.gitlab.mergerequest.ui.review.GitLabMergeRequestSub
 import org.jetbrains.plugins.gitlab.mergerequest.ui.review.GitLabMergeRequestSubmitReviewViewModel.SubmittableReview
 import org.jetbrains.plugins.gitlab.mergerequest.ui.review.GitLabMergeRequestSubmitReviewViewModelImpl
 import org.jetbrains.plugins.gitlab.mergerequest.ui.review.getSubmittableReview
-import org.jetbrains.plugins.gitlab.mergerequest.util.GitLabMergeRequestReviewersUtil
 import org.jetbrains.plugins.gitlab.util.GitLabBundle
-import org.jetbrains.plugins.gitlab.util.GitLabCoroutineUtil
 
 @ApiStatus.Internal
 interface GitLabMergeRequestReviewFlowViewModel : CodeReviewFlowViewModel<GitLabReviewerDTO> {
@@ -45,6 +60,7 @@ interface GitLabMergeRequestReviewFlowViewModel : CodeReviewFlowViewModel<GitLab
 
   val currentUser: GitLabUserDTO
   val author: GitLabUserDTO
+  val avatarIconsProvider: IconsProvider<GitLabUserDTO>
 
   val reviewRequestState: SharedFlow<ReviewRequestState>
   val reviewers: StateFlow<List<GitLabReviewerDTO>>
@@ -61,8 +77,7 @@ interface GitLabMergeRequestReviewFlowViewModel : CodeReviewFlowViewModel<GitLab
   val submittableReview: SharedFlow<SubmittableReview?>
   var submitReviewInputHandler: (suspend (GitLabMergeRequestSubmitReviewViewModel) -> Unit)?
 
-  //TODO: extract reviewers update VM
-  val potentialReviewers: Flow<Result<List<GitLabUserDTO>>>
+  val projectMembers: StateFlow<IncrementallyComputedValue<List<GitLabUserDTO>>>
 
   /**
    * Request the start of a submission process
@@ -81,10 +96,9 @@ interface GitLabMergeRequestReviewFlowViewModel : CodeReviewFlowViewModel<GitLab
 
   fun postReview()
 
-  fun adjustReviewers(point: RelativePoint)
-
-  @SinceGitLab("13.8")
   fun setMyselfAsReviewer()
+
+  fun setReviewers(reviewers: List<GitLabUserDTO>)
 
   @SinceGitLab("13.8")
   fun removeReviewer(reviewer: GitLabUserDTO)
@@ -94,13 +108,14 @@ interface GitLabMergeRequestReviewFlowViewModel : CodeReviewFlowViewModel<GitLab
 
 private val LOG = logger<GitLabMergeRequestReviewFlowViewModel>()
 
+@OptIn(ExperimentalCoroutinesApi::class)
 internal class GitLabMergeRequestReviewFlowViewModelImpl(
   private val project: Project,
   parentScope: CoroutineScope,
   override val currentUser: GitLabUserDTO,
   projectData: GitLabProject,
   private val mergeRequest: GitLabMergeRequest,
-  private val avatarIconsProvider: IconsProvider<GitLabUserDTO>
+  override val avatarIconsProvider: IconsProvider<GitLabUserDTO>
 ) : GitLabMergeRequestReviewFlowViewModel {
   private val scope = parentScope.childScope(this::class)
   private val taskLauncher = SingleCoroutineLauncher(scope)
@@ -177,8 +192,10 @@ internal class GitLabMergeRequestReviewFlowViewModelImpl(
   override val submittableReview: SharedFlow<SubmittableReview?> = mergeRequest.getSubmittableReview(currentUser).modelFlow(scope, LOG)
   override var submitReviewInputHandler: (suspend (GitLabMergeRequestSubmitReviewViewModel) -> Unit)? = null
 
-  override val potentialReviewers: Flow<Result<List<GitLabUserDTO>>> =
-    GitLabCoroutineUtil.batchesResultsFlow(projectData.dataReloadSignal, projectData::getMembersBatches)
+  override val projectMembers: StateFlow<IncrementallyComputedValue<List<GitLabUserDTO>>> =
+    projectData.dataReloadSignal.withInitial(Unit).transformLatest {
+      projectData.getMembersBatches().collectIncrementallyTo(this)
+    }.stateIn(scope, SharingStarted.Lazily, IncrementallyComputedValue.loading())
 
   override fun submitReview() {
     scope.launch {
@@ -259,21 +276,6 @@ internal class GitLabMergeRequestReviewFlowViewModelImpl(
     mergeRequest.postReview()
   }
 
-  override fun adjustReviewers(point: RelativePoint) {
-    scope.launchNow(Dispatchers.Main) {
-      val allowsMultipleReviewers = allowsMultipleReviewers.first()
-      val originalReviewersIds = reviewers.value.mapTo(mutableSetOf<String>(), GitLabUserDTO::id)
-      val updatedReviewers = if (allowsMultipleReviewers == true)
-        GitLabMergeRequestReviewersUtil.selectReviewers(point, originalReviewersIds, potentialReviewers, avatarIconsProvider)
-      else
-        GitLabMergeRequestReviewersUtil.selectReviewer(point, originalReviewersIds, potentialReviewers, avatarIconsProvider)
-
-      updatedReviewers ?: return@launchNow
-      setReviewers(updatedReviewers)
-    }
-  }
-
-  @SinceGitLab("13.8")
   override fun setMyselfAsReviewer() = runAction {
     val allowsMultipleReviewers = allowsMultipleReviewers.first()
     if (allowsMultipleReviewers) {
@@ -296,8 +298,7 @@ internal class GitLabMergeRequestReviewFlowViewModelImpl(
     mergeRequest.reviewerRereview(requestedReviewers)
   }
 
-  @SinceGitLab("13.8")
-  private fun setReviewers(reviewers: List<GitLabUserDTO>) = runAction {
+  override fun setReviewers(reviewers: List<GitLabUserDTO>) = runAction {
     mergeRequest.setReviewers(reviewers)
   }
 

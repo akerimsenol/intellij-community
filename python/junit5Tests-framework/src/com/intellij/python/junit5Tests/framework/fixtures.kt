@@ -10,11 +10,14 @@ import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiFile
 import com.intellij.testFramework.junit5.fixture.TestFixture
 import com.intellij.testFramework.junit5.fixture.testFixture
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import org.jetbrains.annotations.TestOnly
 import java.nio.file.Path
-import java.util.*
+import java.util.UUID
 
 
 /**
@@ -25,9 +28,18 @@ fun applicationScope(name: String = UUID.randomUUID().toString()): TestFixture<C
   @Service
   class MyService(val scope: CoroutineScope)
 
-  val scope = ApplicationManager.getApplication().service<MyService>().scope.childScope(name)
+  var unhandledException: Throwable? = null
+  val handler = CoroutineExceptionHandler { _, exception ->
+   unhandledException = exception
+   throw exception
+  }
+  val scope = ApplicationManager.getApplication().service<MyService>().scope.childScope(name, handler)
   initialized(scope) {
+    scope.coroutineContext.job.cancelAndJoin()
     scope.cancel()
+    unhandledException?.let {
+      throw it
+    }
   }
 }
 

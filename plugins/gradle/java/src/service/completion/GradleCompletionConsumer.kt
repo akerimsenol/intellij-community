@@ -14,7 +14,7 @@ import com.intellij.util.lazyPub
 import org.jetbrains.plugins.gradle.codeInspection.groovy.DelegationHierarchy
 import org.jetbrains.plugins.gradle.codeInspection.groovy.getDelegationHierarchy
 import org.jetbrains.plugins.gradle.codeInspection.groovy.getDelegationSourceCaller
-import org.jetbrains.plugins.gradle.service.resolve.GradleExtensionsContributor
+import org.jetbrains.plugins.gradle.service.resolve.GradleExtensionsContributorUtil
 import org.jetbrains.plugins.groovy.lang.completion.api.GroovyCompletionConsumer
 import org.jetbrains.plugins.groovy.lang.psi.impl.synthetic.GrLightField
 import kotlin.math.absoluteValue
@@ -33,7 +33,7 @@ class GradleCompletionConsumer(position: PsiElement, val delegate: GroovyComplet
       GradleLookupWeigher.setGradleCompletionPriority(newElement, GradleLookupWeigher.DEFAULT_COMPLETION_PRIORITY - 1)
       delegate.consume(newElement)
     }
-    else if (psi is GrLightField && psi.originInfo == GradleExtensionsContributor.PROPERTIES_FILE_ORIGINAL_INFO) {
+    else if (psi is GrLightField && psi.originInfo == GradleExtensionsContributorUtil.PROPERTIES_FILE_ORIGINAL_INFO) {
       val property = psi.navigationElement.asSafely<IProperty>() ?: return delegate.consume(element)
       val value = property.value
       val newElement = element.modify { withTailText("=$value").withTypeText(psi.type.presentableText, true) }

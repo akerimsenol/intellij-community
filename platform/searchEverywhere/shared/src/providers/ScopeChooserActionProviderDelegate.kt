@@ -9,13 +9,13 @@ import com.intellij.platform.scopes.SearchScopesInfo
 import com.intellij.platform.searchEverywhere.utils.SuspendLazyProperty
 import com.intellij.platform.searchEverywhere.utils.suspendLazy
 import org.jetbrains.annotations.ApiStatus
-import java.util.*
+import java.util.UUID
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 @OptIn(ExperimentalAtomicApi::class)
 @ApiStatus.Internal
-class ScopeChooserActionProviderDelegate(private val contributorWrapper: SeAsyncContributorWrapper<Any>) {
+class ScopeChooserActionProviderDelegate private constructor(private val contributorWrapper: SeAsyncContributorWrapper<Any>) {
 
   val searchScopesInfo: SuspendLazyProperty<SearchScopesInfo?> = suspendLazy { getSearchScopesInfo() }
 
@@ -75,5 +75,12 @@ class ScopeChooserActionProviderDelegate(private val contributorWrapper: SeAsync
       it.setScopeIsDefaultAndAutoSet(isAutoTogglePossible)
       it.onScopeSelected(scope)
     }
+  }
+
+  companion object {
+    fun createOrNull(contributorWrapper: SeAsyncContributorWrapper<Any>): ScopeChooserActionProviderDelegate? =
+      if (contributorWrapper.contributor.getActions { }.any { it is ScopeChooserAction })
+        ScopeChooserActionProviderDelegate(contributorWrapper)
+      else null
   }
 }

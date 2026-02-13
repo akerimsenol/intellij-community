@@ -116,7 +116,7 @@
       </library>
     </orderEntry>
     <orderEntry type="module" module-name="intellij.platform.runtime.product" />
-    <orderEntry type="module" module-name="intellij.platform.plugins.parser.impl" />
+    <orderEntry type="module" module-name="intellij.platform.pluginSystem.parser.impl" />
     <orderEntry type="module" module-name="intellij.platform.execution" />
   </component>
 </module>

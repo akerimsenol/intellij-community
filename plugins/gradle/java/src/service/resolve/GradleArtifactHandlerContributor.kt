@@ -1,7 +1,11 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.service.resolve
 
-import com.intellij.psi.*
+import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiEllipsisType
+import com.intellij.psi.PsiType
+import com.intellij.psi.ResolveState
 import com.intellij.psi.scope.PsiScopeProcessor
 import icons.GradleIcons.Gradle
 import org.jetbrains.plugins.gradle.service.resolve.GradleCommonClassNames.GRADLE_API_ARTIFACT_HANDLER
@@ -29,7 +33,7 @@ class GradleArtifactHandlerContributor : NonCodeMembersContributor() {
     if (clazz == null) return
     if (!processor.shouldProcessMethods()) return
 
-    val data = GradleExtensionsContributor.getExtensionsFor(place) ?: return
+    val data = GradleExtensionsContributorUtil.getExtensionsFor(place) ?: return
     val methodName = processor.getName(state)
     val manager = place.manager
     val objectVarargType = PsiEllipsisType(getJavaLangObject(place))

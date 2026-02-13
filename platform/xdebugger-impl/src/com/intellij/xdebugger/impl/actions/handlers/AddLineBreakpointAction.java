@@ -18,16 +18,15 @@ import com.intellij.ui.ExperimentalUI;
 import com.intellij.util.ModalityUiUtil;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.breakpoints.SuspendPolicy;
-import com.intellij.xdebugger.impl.XDebuggerManagerImpl;
 import com.intellij.xdebugger.impl.XSourcePositionImpl;
-import com.intellij.xdebugger.impl.breakpoints.XBreakpointUtil;
+import com.intellij.xdebugger.impl.breakpoints.XBreakpointUIUtil;
 import com.intellij.xdebugger.impl.breakpoints.XExpressionImpl;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.awt.*;
+import java.awt.Point;
 
 /**
  * @author Konstantin Bulenkov
@@ -43,7 +42,7 @@ public class AddLineBreakpointAction extends DumbAwareAction implements SplitDeb
     XSourcePosition position = getLineBreakpointPosition(e);
     assert position != null;
     String selection = editor.getSelectionModel().getSelectedText();
-    XBreakpointUtil.toggleLineBreakpointProxy(project, position, false, editor, false, false, true)
+    XBreakpointUIUtil.toggleLineBreakpointProxy(project, position, false, editor, false, false, true)
       .thenAccept(bp -> {
         if (bp != null && editBreakpointSettings(bp, selection)) {
           ModalityUiUtil.invokeLaterIfNeeded(ModalityState.defaultModalityState(), () -> {
@@ -75,7 +74,7 @@ public class AddLineBreakpointAction extends DumbAwareAction implements SplitDeb
       if (gutter instanceof EditorGutterComponentEx) {
         Object lineNumber = ((EditorGutterComponentEx)gutter).getClientProperty("active.line.number");
         if (!(lineNumber instanceof Integer)) {
-          lineNumber = e.getData(XDebuggerManagerImpl.ACTIVE_LINE_NUMBER);
+          lineNumber = e.getData(DebuggerUIUtil.ACTIVE_LINE_NUMBER);
         }
         if (lineNumber != null) {
           LogicalPosition pos = new LogicalPosition((Integer)lineNumber, 0);

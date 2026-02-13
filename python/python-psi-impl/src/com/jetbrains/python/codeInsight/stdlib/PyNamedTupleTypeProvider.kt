@@ -9,13 +9,39 @@ import com.intellij.util.containers.mapSmartNotNull
 import com.jetbrains.python.PyNames
 import com.jetbrains.python.ast.PyAstFunction
 import com.jetbrains.python.codeInsight.typing.PyTypingTypeProvider
-import com.jetbrains.python.psi.*
+import com.jetbrains.python.psi.AccessDirection
+import com.jetbrains.python.psi.PyAssignmentStatement
+import com.jetbrains.python.psi.PyCallExpression
+import com.jetbrains.python.psi.PyClass
+import com.jetbrains.python.psi.PyElementGenerator
+import com.jetbrains.python.psi.PyExpression
+import com.jetbrains.python.psi.PyFunction
+import com.jetbrains.python.psi.PyKeywordArgument
+import com.jetbrains.python.psi.PyParameter
+import com.jetbrains.python.psi.PyPsiFacade
+import com.jetbrains.python.psi.PyQualifiedNameOwner
+import com.jetbrains.python.psi.PyReferenceExpression
+import com.jetbrains.python.psi.PyTargetExpression
+import com.jetbrains.python.psi.PyUtil
+import com.jetbrains.python.psi.PyWithAncestors
 import com.jetbrains.python.psi.impl.PyCallExpressionNavigator
 import com.jetbrains.python.psi.impl.StubAwareComputation
 import com.jetbrains.python.psi.impl.stubs.PyNamedTupleStubImpl
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.stubs.PyNamedTupleStub
-import com.jetbrains.python.psi.types.*
+import com.jetbrains.python.psi.types.PyCallableParameter
+import com.jetbrains.python.psi.types.PyCallableParameterImpl
+import com.jetbrains.python.psi.types.PyCallableType
+import com.jetbrains.python.psi.types.PyCallableTypeImpl
+import com.jetbrains.python.psi.types.PyClassLikeType
+import com.jetbrains.python.psi.types.PyClassType
+import com.jetbrains.python.psi.types.PyNamedTupleType
+import com.jetbrains.python.psi.types.PyType
+import com.jetbrains.python.psi.types.PyTypeMember
+import com.jetbrains.python.psi.types.PyTypeProviderBase
+import com.jetbrains.python.psi.types.PyTypeUtil
+import com.jetbrains.python.psi.types.PyUnionType
+import com.jetbrains.python.psi.types.TypeEvalContext
 import one.util.streamex.StreamEx
 import java.util.stream.Collectors
 
@@ -252,10 +278,9 @@ class PyNamedTupleTypeProvider : PyTypeProviderBase() {
       qualifierType: PyClassLikeType,
       context: TypeEvalContext,
     ): PyCallableType? {
-      val call = anchor as? PyCallExpression ?: return null
       val parameters = mutableListOf<PyCallableParameter>()
       val resultType = qualifierType.toInstance()
-      val elementGenerator = PyElementGenerator.getInstance(call.project)
+      val elementGenerator = PyElementGenerator.getInstance(anchor.project)
 
       if (qualifierType.isDefinition) {
         parameters.add(PyCallableParameterImpl.nonPsi(PyNames.CANONICAL_SELF, resultType))
@@ -266,8 +291,9 @@ class PyNamedTupleTypeProvider : PyTypeProviderBase() {
 
       fields.keys.mapTo(parameters) { PyCallableParameterImpl.nonPsi(it, null, ellipsis) }
 
-      return if (resultType is PyNamedTupleType) {
+      return if (resultType is PyNamedTupleType && anchor is PyCallExpression) {
         val newFields = mutableMapOf<String?, PyType?>()
+        val call = anchor
 
         for (argument in call.arguments) {
           if (argument is PyKeywordArgument) {

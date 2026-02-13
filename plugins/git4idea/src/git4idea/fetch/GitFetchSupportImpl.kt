@@ -5,6 +5,7 @@ import com.intellij.dvcs.MultiMessage
 import com.intellij.dvcs.MultiRootMessage
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.externalProcessAuthHelper.AuthenticationGate
+import com.intellij.externalProcessAuthHelper.AuthenticationMode
 import com.intellij.externalProcessAuthHelper.RestrictingAuthenticationGate
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
@@ -136,7 +137,6 @@ internal class GitFetchSupportImpl(private val project: Project) : GitFetchSuppo
         val successFetchesMap = succeedResults.groupBy({ it.fetchSpec.repository }, { it.fetchSpec.remote })
         if (successFetchesMap.isNotEmpty()) {
           GitFetchHandler.afterSuccessfulFetch(project, successFetchesMap, progressManager.progressIndicator ?: EmptyProgressIndicator())
-          successFetchesMap.keys.forEach { it.tagHolder.reload() }
         }
         activity.finished()
         FetchResultImpl(project, VcsNotifier.getInstance(project), mergedResults)
@@ -261,7 +261,7 @@ internal class GitFetchSupportImpl(private val project: Project) : GitFetchSuppo
     val params = fetchTarget.asParams()
     val repository = fetchTarget.repository
     val remote = fetchTarget.remote
-    val result = git.fetch(fetchTarget.repository, remote, listOf(progressListener), authenticationGate, *params)
+    val result = git.fetch(fetchTarget.repository, remote, listOf(progressListener), authenticationGate, fetchTarget.authMode, *params)
     val pruned = result.output.mapNotNull { getPrunedRef(it) }
     if (result.success()) {
       BackgroundTaskUtil.syncPublisher(repository.project, GIT_AUTHENTICATION_SUCCESS).authenticationSucceeded(repository, remote)
@@ -322,6 +322,8 @@ internal class GitFetchSupportImpl(private val project: Project) : GitFetchSuppo
   ) : GitFetchResult {
 
     private val isFailed = results.values.any { !it.totallySuccessful() }
+
+    override fun isSuccessful(): Boolean = !isFailed
 
     override fun showNotification() {
       doShowNotification()

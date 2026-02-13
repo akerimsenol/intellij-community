@@ -2,7 +2,11 @@
 package com.jetbrains.python.psi.types
 
 import com.jetbrains.python.PyNames
-import com.jetbrains.python.psi.*
+import com.jetbrains.python.psi.AccessDirection
+import com.jetbrains.python.psi.PyCallSiteExpression
+import com.jetbrains.python.psi.PyExpression
+import com.jetbrains.python.psi.PyQualifiedNameOwner
+import com.jetbrains.python.psi.PyTargetExpression
 import com.jetbrains.python.psi.resolve.PyResolveContext
 import com.jetbrains.python.psi.resolve.RatedResolveResult
 import org.jetbrains.annotations.ApiStatus
@@ -41,6 +45,10 @@ class PyTypingNewType(
     else {
       null
     }
+  }
+
+  override fun getParametersType(context: TypeEvalContext): PyCallableParameterVariadicType? {
+    return getParameters(context)?.let { PyCallableParameterListTypeImpl(it) }
   }
 
   override fun getSuperClassTypes(context: TypeEvalContext): List<PyClassLikeType> = listOf(classType)

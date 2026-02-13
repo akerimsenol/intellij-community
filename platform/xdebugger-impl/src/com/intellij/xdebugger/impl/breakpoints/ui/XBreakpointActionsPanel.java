@@ -11,15 +11,17 @@ import com.intellij.xdebugger.XDebuggerBundle;
 import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider;
-import com.intellij.xdebugger.impl.XDebuggerUtilImpl;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xdebugger.impl.ui.XDebuggerExpressionComboBox;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JCheckBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
@@ -140,7 +142,7 @@ public class XBreakpointActionsPanel extends XBreakpointPropertiesSubPanel {
 
     if (myLogExpressionComboBox != null) {
       XExpression expression = myLogExpressionComboBox.getExpression();
-      XExpression logExpression = !XDebuggerUtilImpl.isEmptyExpression(expression) ? expression : null;
+      XExpression logExpression = !DebuggerUIUtil.isEmptyExpression(expression) ? expression : null;
       myBreakpoint.setLogExpressionEnabled(logExpression == null || myLogExpressionCheckBox.isSelected());
       myBreakpoint.setLogExpressionObject(logExpression);
       myLogExpressionComboBox.saveTextInHistory();

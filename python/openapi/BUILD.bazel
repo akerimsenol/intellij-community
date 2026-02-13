@@ -32,6 +32,7 @@ jvm_library(
     "//platform/projectModel-api:projectModel",
     "//platform/eel",
     "//platform/eel-provider",
+    "//platform/execution",
   ],
   exports = [
     "//python/python-psi-api:psi",
@@ -59,6 +60,7 @@ jvm_library(
     "@lib//:junit5",
     "//platform/eel",
     "//platform/eel-provider",
+    "//platform/execution",
   ],
   exports = [
     "//python/python-psi-api:psi",

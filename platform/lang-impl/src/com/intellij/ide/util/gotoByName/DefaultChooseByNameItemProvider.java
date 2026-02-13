@@ -9,27 +9,40 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiCompiledElement;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.SmartPointerManager;
+import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.psi.codeStyle.MinusculeMatcher;
 import com.intellij.psi.codeStyle.NameUtil;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.proximity.PsiProximityComparator;
-import com.intellij.util.*;
+import com.intellij.util.CollectConsumer;
+import com.intellij.util.Consumer;
+import com.intellij.util.Processor;
+import com.intellij.util.SmartList;
+import com.intellij.util.SynchronizedCollectConsumer;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.FList;
 import com.intellij.util.indexing.FindSymbolParameters;
 import com.intellij.util.indexing.IdFilter;
 import com.intellij.util.text.EditDistance;
+import com.intellij.util.text.matching.MatchedFragment;
 import com.intellij.util.text.matching.MatchingMode;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.function.Supplier;
 
 public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemProvider {
@@ -183,7 +196,7 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
       long started = System.currentTimeMillis();
       String fullPattern = parameters.getCompletePattern();
       MinusculeMatcher matcher = buildPatternMatcher(namePattern, preferStartMatches);
-      MinusculeMatcher fullMatcher = buildPatternMatcher(fullPattern, preferStartMatches);
+      MinusculeMatcher fullMatcher = buildPatternMatcher(convertToMatchingPattern(base, fullPattern), preferStartMatches);
       ((ChooseByNameModelEx)model).processNames(sequence -> {
         indicator.checkCanceled();
         MatchResult result = matchesWithFullMatcherCheck(base, fullMatcher, fullPattern, matcher, sequence);
@@ -324,7 +337,7 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
     MatchResult result = matchName(fullMatcher, fullName);
     if (Registry.is("search.everywhere.fuzzy.class.search.enabled", false) && result == null) {
       LevenshteinCalculator levenshteinMatcher = new LevenshteinCalculator(fullMatcher.getPattern());
-      float distance = levenshteinMatcher.distanceToStringPath(fullName, true, true);
+      float distance = levenshteinMatcher.distanceToStringPath(fullName, true, true, model);
       result = distance >= LevenshteinCalculator.MIN_ACCEPTABLE_DISTANCE
                ? new MatchResult(fullName, LevenshteinCalculator.weightFromDistance(distance), false) : null;
     }
@@ -399,11 +412,18 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
     if (base.getModel() instanceof MatchResultCustomizerModel customizerModel && fullMatcher != null) {
       MatchResult customResult = customizerModel.getCustomRulesMatchResult(fullMatcher, pattern, matcher, name);
       if (customResult != null) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("custom result weight for name [" + name + "] = " + customResult.matchingDegree);
+        }
         return customResult;
       }
     }
 
-    return matches(base, pattern, matcher, name);
+    final var defaultMatch = matches(base, pattern, matcher, name);
+    if (LOG.isDebugEnabled() && defaultMatch != null) {
+      LOG.debug("default result weight for name [" + name + "] = " + defaultMatch.matchingDegree);
+    }
+    return defaultMatch;
   }
 
   protected static @Nullable MatchResult matches(@NotNull ChooseByNameViewModel base,
@@ -427,7 +447,7 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
   }
 
   private static @Nullable MatchResult matchName(@NotNull MinusculeMatcher matcher, @NotNull String name) {
-    FList<TextRange> fragments = matcher.matchingFragments(name);
+    @Nullable List<@NotNull MatchedFragment> fragments = matcher.match(name);
     return fragments != null ? new MatchResult(name, matcher.matchingDegree(name, false, fragments), MinusculeMatcher.isStartMatch(fragments)) : null;
   }
 
@@ -501,8 +521,8 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
      * @param inverted a flag indicating whether the pattern can be in reverse order
      * @return the distance as the average distance of all the matches
      */
-    public float distanceToVirtualFile(VirtualFile file, boolean lastMatches, boolean inverted) {
-      return distanceToStringPath(file.getPath(), lastMatches, inverted);
+    public float distanceToVirtualFile(VirtualFile file, boolean lastMatches, boolean inverted, ChooseByNameModel model) {
+      return distanceToStringPath(file.getPath(), lastMatches, inverted, model);
     }
 
     /**
@@ -520,12 +540,12 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
      * @param inverted    a flag indicating whether the pattern can be in reverse order
      * @return the distance as the average distance of all the matches
      */
-    public float distanceToStringPath(String path, boolean lastMatches, boolean inverted) {
+    public float distanceToStringPath(String path, boolean lastMatches, boolean inverted, ChooseByNameModel model) {
       List<String> pathComponents = normalizeString(path);
-      return Math.max(distanceBetweenComponents(patternComponents, pathComponents, lastMatches),
+      return Math.max(distanceBetweenComponents(patternComponents, pathComponents, lastMatches, model),
                       (!inverted && invertedPatternComponents == null)
                       ? 0
-                      : distanceBetweenComponents(invertedPatternComponents, pathComponents, lastMatches));
+                      : distanceBetweenComponents(invertedPatternComponents, pathComponents, lastMatches, model));
     }
 
     public static List<String> normalizeString(String string) {
@@ -546,7 +566,7 @@ public class DefaultChooseByNameItemProvider implements ChooseByNameInScopeItemP
       return 1.0f - ((float)distance / maxLength);
     }
 
-    private static float distanceBetweenComponents(List<String> patternComponents, List<String> pathComponents, boolean lastMatches) {
+    private static float distanceBetweenComponents(List<String> patternComponents, List<String> pathComponents, boolean lastMatches, ChooseByNameModel model) {
       if (pathComponents.isEmpty() || patternComponents.isEmpty()) {
         return 0;
       }

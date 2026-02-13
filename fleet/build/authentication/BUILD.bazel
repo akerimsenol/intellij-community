@@ -9,6 +9,7 @@ create_kotlinc_options(
     "kotlin.ExperimentalStdlibApi",
   ],
   x_consistent_data_class_copy_visibility = True,
+  x_context_parameters = True,
   x_jvm_default = "all-compatibility",
   x_lambdas = "class"
 )
@@ -25,7 +26,7 @@ jvm_library(
     "@lib//:kotlinx-serialization-json",
     "@lib//:slf4j-api",
     "@lib//:fleet-io-github-pdvrieze-xmlutil-serialization-jvm",
-    "@lib//:fleet-io-github-pdvrieze-xmlutil-core-jvm",
+    "@lib//:fleet-io-github-pdvrieze-xmlutil-core",
   ]
 )
 ### auto-generated section `build fleet.build.authentication` end

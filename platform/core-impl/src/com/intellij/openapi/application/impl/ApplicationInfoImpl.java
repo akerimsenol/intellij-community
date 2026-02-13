@@ -19,6 +19,7 @@ import com.intellij.util.xml.dom.XmlElement;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.annotations.VisibleForTesting;
 
 import java.nio.file.Files;
@@ -26,7 +27,12 @@ import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.GregorianCalendar;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Provides access to content of *ApplicationInfo.xml file.
@@ -353,6 +359,11 @@ public final class ApplicationInfoImpl extends ApplicationInfoEx {
     return majorReleaseBuildDate == null ? getBuildDate() : GregorianCalendar.from(majorReleaseBuildDate);
   }
 
+  @TestOnly
+  public @Nullable ZonedDateTime getMajorReleaseBuildDateTime() {
+    return majorReleaseBuildDate;
+  }
+
   @Override
   public @NotNull BuildNumber getBuild() {
     return Objects.requireNonNull(BuildNumber.fromString(myBuildNumber));
@@ -404,6 +415,11 @@ public final class ApplicationInfoImpl extends ApplicationInfoEx {
   @Override
   public String getPatchVersion() {
     return myPatchVersion;
+  }
+
+  @TestOnly
+  public @Nullable String getVersionSuffix() {
+    return myVersionSuffix;
   }
 
   @Override

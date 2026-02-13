@@ -20,6 +20,7 @@ jvm_library(
     "//platform/execution-impl",
     "//platform/projectModel-api:projectModel",
     "//platform/smRunner",
+    "@lib//:kotlin-stdlib",
     "//platform/vcs-api:vcs",
     "//platform/platform-impl:ide-impl",
     "//platform/lang-api:lang",

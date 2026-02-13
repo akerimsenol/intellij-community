@@ -13,8 +13,6 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.module.Module
-import com.intellij.openapi.options.advanced.AdvancedSettings
-import com.intellij.openapi.options.advanced.AdvancedSettingsImpl
 import com.intellij.openapi.projectRoots.JavaSdkVersion
 import com.intellij.openapi.projectRoots.JavaSdkVersionUtil
 import com.intellij.openapi.roots.LibraryOrderEntry
@@ -31,9 +29,13 @@ import org.jetbrains.kotlin.idea.base.plugin.KotlinPluginMode
 import org.jetbrains.kotlin.idea.base.test.AndroidStudioTestUtils
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModel
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModelBinary
-import org.jetbrains.kotlin.idea.test.*
+import org.jetbrains.kotlin.idea.test.ExpectedPluginModeProvider
+import org.jetbrains.kotlin.idea.test.GradleProcessOutputInterceptor
+import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
+import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils.getTestDataFileName
 import org.jetbrains.kotlin.idea.test.TestMetadataUtil.getTestData
+import org.jetbrains.kotlin.idea.test.setUpWithKotlinPlugin
 import org.jetbrains.kotlin.utils.addToStdlib.filterIsInstanceWithChecker
 import org.jetbrains.plugins.gradle.importing.GradleImportingTestCase
 import org.jetbrains.plugins.gradle.service.project.open.createLinkSettings
@@ -413,7 +415,3 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase(),
     }
 }
 
-fun GradleImportingTestCase.enableExperimentalMPP(enable: Boolean) {
-    //enable experimental MPP features e.g. an import K/JS run tasks
-    (AdvancedSettings.getInstance() as AdvancedSettingsImpl).setSetting("kotlin.mpp.experimental", enable, testRootDisposable)
-}

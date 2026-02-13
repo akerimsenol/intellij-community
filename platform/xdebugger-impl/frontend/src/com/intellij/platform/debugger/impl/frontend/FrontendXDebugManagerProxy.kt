@@ -6,21 +6,25 @@ import com.intellij.frontend.FrontendType
 import com.intellij.openapi.project.Project
 import com.intellij.platform.debugger.impl.frontend.evaluate.quick.FrontendXValue
 import com.intellij.platform.debugger.impl.frontend.frame.FrontendXExecutionStack
+import com.intellij.platform.debugger.impl.frontend.frame.FrontendXStackFrame
 import com.intellij.platform.debugger.impl.rpc.XExecutionStackId
+import com.intellij.platform.debugger.impl.rpc.XStackFrameId
 import com.intellij.platform.debugger.impl.rpc.XValueId
+import com.intellij.platform.debugger.impl.shared.XDebuggerWatchesManager
 import com.intellij.platform.debugger.impl.shared.proxy.XBreakpointManagerProxy
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
 import com.intellij.xdebugger.SplitDebuggerMode
 import com.intellij.xdebugger.frame.XExecutionStack
 import com.intellij.xdebugger.frame.XValue
 import com.intellij.xdebugger.impl.XDebuggerExecutionPointManagerImpl
-import com.intellij.platform.debugger.impl.shared.proxy.XDebugManagerProxy
-import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
-import com.intellij.platform.debugger.impl.shared.XDebuggerWatchesManager
 import com.intellij.xdebugger.impl.proxy.withTemporaryXValueId
-import com.intellij.xdebugger.impl.util.XDebugMonolithUtils
+import com.intellij.platform.debugger.impl.ui.XDebuggerEntityConverter
+import com.intellij.xdebugger.frame.XStackFrame
+import com.intellij.xdebugger.impl.XDebugSessionImpl
 import kotlinx.coroutines.flow.Flow
 
-private class FrontendXDebugManagerProxy : XDebugManagerProxy {
+internal class FrontendXDebugManagerProxy : XDebugManagerProxy {
   override fun isEnabled(): Boolean {
     val frontendType = FrontendApplicationInfo.getFrontendType()
     return SplitDebuggerMode.isSplitDebugger() ||
@@ -39,7 +43,8 @@ private class FrontendXDebugManagerProxy : XDebugManagerProxy {
     }
     else {
       // Otherwise try to fall back to monolith implementation if possible
-      val monolithSession = XDebugMonolithUtils.findSessionById(session.id) ?: error("XValue is not a FrontendXValue: $value")
+      val monolithSession = XDebuggerEntityConverter.getSession(session) ?: error("XValue is not a FrontendXValue: $value")
+      monolithSession as XDebugSessionImpl
       return withTemporaryXValueId(value, monolithSession, block)
     }
   }
@@ -53,6 +58,11 @@ private class FrontendXDebugManagerProxy : XDebugManagerProxy {
   override suspend fun <T> withId(stack: XExecutionStack, session: XDebugSessionProxy, block: suspend (XExecutionStackId) -> T): T {
     val executionStackId = (stack as FrontendXExecutionStack).id
     return block(executionStackId)
+  }
+
+  override suspend fun <T> withId(frame: XStackFrame, session: XDebugSessionProxy, block: suspend (XStackFrameId) -> T): T {
+    val frameId = (frame as FrontendXStackFrame).id
+    return block(frameId)
   }
 
   override fun getCurrentSessionProxy(project: Project): XDebugSessionProxy? {

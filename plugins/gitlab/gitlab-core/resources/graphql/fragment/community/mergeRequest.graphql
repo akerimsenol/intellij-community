@@ -16,7 +16,7 @@ fragment mergeRequest on MergeRequest {
     }
 
     nodes {
-      title
+      ...label
     }
   }
 

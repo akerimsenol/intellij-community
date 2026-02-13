@@ -25,6 +25,7 @@ jvm_library(
     "//jps/model-api:model",
     "//platform/lang-api:lang",
     "//platform/lang-core",
+    "@lib//:kotlin-stdlib",
     "//platform/lang-impl",
     "//libraries/jackson/jackson",
     "//libraries/jackson/databind",

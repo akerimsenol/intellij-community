@@ -5,9 +5,8 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.EDT
 import com.intellij.platform.debugger.impl.shared.SplitDebuggerAction
-import com.intellij.xdebugger.impl.DebuggerSupport
+import com.intellij.platform.debugger.impl.shared.performDebuggerActionAsync
 import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
-import com.intellij.xdebugger.impl.performDebuggerActionAsync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withContext
@@ -15,7 +14,7 @@ import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Internal
 class ShowExecutionPointAction : XDebuggerActionBase(), SplitDebuggerAction {
-  override fun getHandler(debuggerSupport: DebuggerSupport): DebuggerActionHandler {
+  override fun getHandler(): DebuggerActionHandler {
     return ourHandler
   }
 

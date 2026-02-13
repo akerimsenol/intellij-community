@@ -66,6 +66,7 @@ jvm_library(
     "//plugins/kotlin/code-insight/utils",
     "//plugins/kotlin/base/analysis-api/analysis-api-utils:kotlin-base-analysis-utils",
     "//java/java-psi-api:psi",
+    "//java/java-psi-impl:psi-impl",
     "//plugins/kotlin/base/psi",
     "//plugins/kotlin/base/plugin",
     "//platform/core-api:core",
@@ -75,6 +76,11 @@ jvm_library(
     "//plugins/kotlin/gradle/gradle-tooling/impl",
     "//plugins/kotlin/highlighting/highlighting-shared:kotlin-highlighting-shared",
     "//platform/eel-provider",
+    "//platform/projectModel-impl",
+    "//plugins/gradle/java",
+    "//plugins/kotlin/code-insight/impl-base:kotlin-codeInsight-shared",
+    "//plugins/kotlin/uast/uast-kotlin-base:kotlin-uast-base",
+    "//plugins/gradle/java/toml",
   ]
 )
 
@@ -120,6 +126,7 @@ jvm_library(
     "//plugins/kotlin/code-insight/utils",
     "//plugins/kotlin/base/analysis-api/analysis-api-utils:kotlin-base-analysis-utils",
     "//java/java-psi-api:psi",
+    "//java/java-psi-impl:psi-impl",
     "//plugins/kotlin/base/psi",
     "//plugins/kotlin/base/plugin",
     "//plugins/kotlin/base/plugin:plugin_test_lib",
@@ -145,7 +152,6 @@ jvm_library(
     "//platform/indexing-api:indexing",
     "//plugins/kotlin/base/project-structure",
     "//plugins/kotlin/base/project-structure:project-structure_test_lib",
-    "//platform/projectModel-impl",
     "//plugins/kotlin/base/scripting/scripting.shared",
     "//java/openapi:java",
     "//platform/platform-impl:ide-impl",
@@ -153,6 +159,17 @@ jvm_library(
     "//plugins/kotlin/gradle/gradle-tooling/impl:impl_test_lib",
     "//plugins/kotlin/highlighting/highlighting-shared:kotlin-highlighting-shared",
     "//platform/eel-provider",
+    "//platform/projectModel-impl",
+    "//java/testFramework",
+    "//plugins/gradle/java",
+    "//plugins/kotlin/code-insight/impl-base:kotlin-codeInsight-shared",
+    "//plugins/kotlin/highlighting/highlighting-minimal:kotlin-highlighting-minimal",
+    "@lib//:assert_j",
+    "//plugins/kotlin/uast/uast-kotlin-base:kotlin-uast-base",
+    "//plugins/gradle/completion",
+    "//plugins/gradle/completion:completion_test_lib",
+    "//plugins/gradle/java/toml",
+    "//plugins/gradle/java/properties",
   ]
 )
 ### auto-generated section `build intellij.kotlin.gradle.scripting` end

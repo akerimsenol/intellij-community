@@ -16,8 +16,8 @@ jvm_library(
   deps = [
     "@lib//:kotlin-stdlib",
     "//plugins/gradle",
+    "//plugins/gradle/plugin",
     "//plugins/gradle:gradle-common",
-    "//plugins/coverage",
     "//plugins/gradle/jps-plugin:jps",
     "//java/java-indexing-api:indexing",
     "//platform/analysis-api:analysis",
@@ -42,8 +42,6 @@ jvm_library(
     "//java/compiler/openapi:java-compiler",
     "//plugins/groovy",
     "//platform/workspace/storage",
-    "//plugins/toml",
-    "//plugins/toml/core",
     "//java/execution/impl",
     "//platform/lang-impl",
     "//java/openapi:java",
@@ -55,9 +53,6 @@ jvm_library(
     "//libraries/xstream",
     "//plugins/groovy/groovy-psi:psi",
     "//java/execution/openapi:java-execution",
-    "//plugins/maven",
-    "//plugins/properties/properties-psi-api:psi",
-    "//plugins/properties/properties-psi-impl:backend-psi",
     "//jps/model-impl",
     "//platform/statistics",
     "//platform/core-ui",
@@ -67,7 +62,6 @@ jvm_library(
     "//java/compiler/impl",
     "//libraries/kotlinx/coroutines/core",
     "//platform/object-serializer:objectSerializer-annotations",
-    "//plugins/completion-ml-ranking",
     "//plugins/performanceTesting/core:performanceTesting",
     "//platform/backend/workspace",
     "//platform/backend/observation",
@@ -77,9 +71,10 @@ jvm_library(
     "//java/debugger/shared",
     "//platform/eel-provider",
     "//platform/execution",
+    "//plugins/properties/properties-psi-impl:backend-psi",
   ],
   exports = ["//plugins/gradle:gradle-common"],
-  runtime_deps = ["@lib//ant/lib:ant-antlr"]
+  runtime_deps = ["@lib//ant/lib:ant"]
 )
 ### auto-generated section `build intellij.gradle.java` end
 
@@ -93,7 +88,13 @@ resourcegroup(
 jvm_library(
   name = "java-tests",
   visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True)
+  srcs = glob([], allow_empty = True),
+  runtime_deps = [
+    "//platform/observable",
+    "//platform/external-system-api/dependency-updater",
+    "//platform/core-ui",
+    "//plugins/gradle/tooling-extension-impl:toolingExtension-impl",
+  ]
 )
 
 jvm_library(
@@ -122,6 +123,7 @@ jvm_library(
     "//java/testFramework",
     "//platform/observable",
     "//java/java-runtime:rt",
+    "//plugins/gradle/properties",
     "//plugins/gradle/java",
     "//plugins/gradle:gradle-tests_test_lib",
     "//plugins/gradle/tooling-extension-impl:toolingExtension-tests_test_lib",
@@ -165,7 +167,13 @@ jvm_library(
     "//platform/smRunner:smRunner_test_lib",
     "//platform/statistics/testFramework",
     "//platform/execution",
-  ]
+    "//platform/refactoring",
+    "//plugins/gradle/java/toml",
+    "//plugins/gradle/java/groovy",
+    "//plugins/gradle/java/groovy/toml",
+    "//plugins/gradle/java/properties",
+  ],
+  runtime_deps = [":java-tests"]
 )
 ### auto-generated section `build intellij.gradle.java.tests` end
 

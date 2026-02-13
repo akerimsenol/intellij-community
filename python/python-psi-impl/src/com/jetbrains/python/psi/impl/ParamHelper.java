@@ -20,9 +20,16 @@ import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.ast.PyAstSingleStarParameter;
 import com.jetbrains.python.ast.PyAstSlashParameter;
 import com.jetbrains.python.ast.impl.ParamHelperCore;
-import com.jetbrains.python.psi.*;
+import com.jetbrains.python.psi.PyCallable;
+import com.jetbrains.python.psi.PyNamedParameter;
+import com.jetbrains.python.psi.PyParameter;
+import com.jetbrains.python.psi.PyParameterList;
+import com.jetbrains.python.psi.PySingleStarParameter;
+import com.jetbrains.python.psi.PySlashParameter;
+import com.jetbrains.python.psi.PyTupleParameter;
 import com.jetbrains.python.psi.types.PyCallableParameter;
 import com.jetbrains.python.psi.types.PyCallableParameterImpl;
+import com.jetbrains.python.psi.types.PyCallableType;
 import com.jetbrains.python.psi.types.TypeEvalContext;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -176,6 +183,29 @@ public final class ParamHelper {
     }
 
     return false;
+  }
+
+  public static boolean isSelfArgsKwargsCallable(@NotNull PyCallableType type, @NotNull TypeEvalContext context) {
+    final List<PyCallableParameter> parameters = type.getParameters(context);
+    return parameters != null && isSelfArgsKwargsSignature(parameters);
+  }
+
+  public static boolean isSelfArgsKwargsSignature(@NotNull List<PyCallableParameter> parameters) {
+    return parameters.size() == 3 &&
+           parameters.get(0).isSelf() &&
+           parameters.get(1).isPositionalContainer() &&
+           parameters.get(2).isKeywordContainer();
+  }
+
+  public static boolean isArgsKwargsCallable(@NotNull PyCallableType type, @NotNull TypeEvalContext context) {
+    final List<PyCallableParameter> parameters = type.getParameters(context);
+    return parameters != null && isArgsKwargsSignature(parameters);
+  }
+
+  public static boolean isArgsKwargsSignature(@NotNull List<PyCallableParameter> parameters) {
+    return parameters.size() == 2 &&
+           parameters.get(0).isPositionalContainer() &&
+           parameters.get(1).isKeywordContainer();
   }
 
   public interface ParamWalker {

@@ -2,7 +2,13 @@
 package org.jetbrains.plugins.gradle.service.resolve
 
 import com.intellij.openapi.module.ModuleUtilCore
-import com.intellij.psi.*
+import com.intellij.psi.JavaPsiFacade
+import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiClassType
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiElementFactory
+import com.intellij.psi.PsiType
+import com.intellij.psi.ResolveState
 import com.intellij.psi.scope.PsiScopeProcessor
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.InheritanceUtil
@@ -37,7 +43,7 @@ class GradleProjectExtensionContributor : NonCodeMembersContributor() {
     }
 
     val containingFile = place.containingFile
-    val extensionsData = GradleExtensionsContributor.getExtensionsFor(containingFile) ?: return
+    val extensionsData = GradleExtensionsContributorUtil.getExtensionsFor(containingFile) ?: return
 
     val name = processor.getName(state)
     val allExtensions = extensionsData.extensions

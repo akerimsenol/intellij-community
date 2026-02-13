@@ -2,11 +2,15 @@
 package org.jetbrains.plugins.gradle.service.resolve
 
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
+import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Key
 import com.intellij.patterns.PatternCondition
-import com.intellij.psi.*
+import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiFile
 import com.intellij.util.ProcessingContext
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.util.GradleConstants.EXTENSION
 import org.jetbrains.plugins.groovy.lang.psi.api.GroovyMethodResult
 import org.jetbrains.plugins.groovy.lang.psi.impl.synthetic.GroovyScriptClass
@@ -34,14 +38,11 @@ internal fun PsiClass?.isResolvedInGradleScript() = this is GroovyScriptClass &&
 
 internal fun PsiFile?.isGradleScript() = this?.originalFile?.virtualFile?.extension == EXTENSION
 
-private val PsiElement.module get() = containingFile?.originalFile?.virtualFile?.let {
-  ProjectFileIndex.getInstance(project).getModuleForFile(it)
-}
+@get:ApiStatus.Internal
+val PsiElement.module: Module?
+  get() = containingFile?.originalFile?.virtualFile?.let { ProjectFileIndex.getInstance(project).getModuleForFile(it) }
 
-internal fun PsiElement.getLinkedGradleProjectPath() : String? {
+@ApiStatus.Internal
+fun PsiElement.getLinkedGradleProjectPath() : String? {
   return ExternalSystemApiUtil.getExternalProjectPath(module)
-}
-
-internal fun PsiElement.getRootGradleProjectPath() : String? {
-  return ExternalSystemApiUtil.getExternalRootProjectPath(module)
 }

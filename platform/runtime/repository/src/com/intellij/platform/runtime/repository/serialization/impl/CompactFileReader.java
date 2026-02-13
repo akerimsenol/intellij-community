@@ -2,6 +2,7 @@
 package com.intellij.platform.runtime.repository.serialization.impl;
 
 import com.intellij.platform.runtime.repository.MalformedRepositoryException;
+import com.intellij.platform.runtime.repository.RuntimeModuleId;
 import com.intellij.platform.runtime.repository.serialization.RawRuntimeModuleDescriptor;
 import com.intellij.platform.runtime.repository.serialization.RawRuntimeModuleRepositoryData;
 import org.jetbrains.annotations.NotNull;
@@ -12,7 +13,10 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public final class CompactFileReader {
   public static final int FORMAT_VERSION = 2;
@@ -36,25 +40,26 @@ public final class CompactFileReader {
       
       boolean hasMainPluginModule = in.readBoolean();
       String mainPluginModuleName = hasMainPluginModule? in.readUTF() : null;
+      RuntimeModuleId mainPluginModuleId = mainPluginModuleName != null ? RuntimeModuleId.module(mainPluginModuleName) : null;
       
-      Map<String, RawRuntimeModuleDescriptor> descriptors = new HashMap<>();
+      Map<RuntimeModuleId, RawRuntimeModuleDescriptor> descriptors = new HashMap<>();
       
       int descriptorsCount = in.readInt();
       int unresolvedDependenciesCount = in.readInt();
       int totalIdCount = descriptorsCount + unresolvedDependenciesCount;
-      String[] descriptorIds = new String[totalIdCount];
+      RuntimeModuleId[] descriptorIds = new RuntimeModuleId[totalIdCount];
       for (int i = 0; i < totalIdCount; i++) {
-        descriptorIds[i] = in.readUTF();
+        descriptorIds[i] = RuntimeModuleId.raw(in.readUTF());
       }
       
       for (int i = 0; i < descriptorsCount; i++) {
-        String descriptorId = descriptorIds[i];
+        RuntimeModuleId descriptorId = descriptorIds[i];
         int dependenciesCount = in.readInt();
-        List<String> dependencies = new ArrayList<>(dependenciesCount);
+        List<RuntimeModuleId> dependencies = new ArrayList<>(dependenciesCount);
         for (int j = 0; j < dependenciesCount; j++) {
           int dependencyIndex = in.readInt();
           if (dependencyIndex < 0 || dependencyIndex >= totalIdCount) {
-            throw new MalformedRepositoryException("Invalid dependency index '" + dependencyIndex + "' in '" + descriptorId + "'");
+            throw new MalformedRepositoryException("Invalid dependency index '" + dependencyIndex + "' in '" + descriptorId.getPresentableName() + "'");
           }
           dependencies.add(descriptorIds[dependencyIndex]);
         }
@@ -66,7 +71,7 @@ public final class CompactFileReader {
 
         descriptors.put(descriptorId, RawRuntimeModuleDescriptor.create(descriptorId, resourcePaths, dependencies));
       }
-      return new RawRuntimeModuleRepositoryData(descriptors, filePath.getParent(), mainPluginModuleName);
+      return RawRuntimeModuleRepositoryData.create(descriptors, filePath.getParent(), mainPluginModuleId);
     }
   }
 

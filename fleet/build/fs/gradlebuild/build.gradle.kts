@@ -10,7 +10,6 @@ plugins {
   id("fleet.toolchain-conventions")
   alias(libs.plugins.dokka)
   id("fleet.module-publishing-conventions")
-  id("fleet.sdk-repositories-publishing-conventions")
   // GRADLE_PLUGINS__MARKER_START
   id("fleet-module")
   // GRADLE_PLUGINS__MARKER_END
@@ -31,7 +30,9 @@ kotlin {
     "-opt-in=kotlin.ExperimentalStdlibApi",
     "-Xlambdas=class",
     "-Xconsistent-data-class-copy-visibility",
+    "-Xcontext-parameters",
     "-XXLanguage:+AllowEagerSupertypeAccessibilityChecks",
+    "-progressive",
   )
   jvm {}
   sourceSets.commonMain.configure { kotlin.srcDir(layout.projectDirectory.dir("../srcCommonMain")) }
@@ -64,8 +65,8 @@ kotlin {
       isTransitive = false
     }
   }
-  sourceSets.jvmTest.dependencies {
-    implementation(project(":fleet.junit"))
+  sourceSets.commonTest.dependencies {
+    implementation(project(":fleet.test.runtime"))
   }
   // KOTLIN__MARKER_END
 }

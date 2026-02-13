@@ -3,11 +3,9 @@
     <module name="intellij.platform.frontend"/>
     <module name="intellij.platform.searchEverywhere"/>
   </dependencies>
-  <actions>
-    <action id="SeNewSearchToggleAction"
-            class="com.intellij.platform.searchEverywhere.frontend.actions.SeNewSearchToggleAction"
-            text="Use Split Search Everywhere"
-            internal="true"/>
+
+  <actions resource-bundle="messages.searchEverywhereFrontendBundle">
+    <action id="SeNewSearchToggleAction" class="com.intellij.platform.searchEverywhere.frontend.actions.SeNewSearchToggleAction"/>
   </actions>
 
   <extensionPoints>
@@ -29,6 +27,7 @@
     <searchEverywhere.tabFactory implementation="com.intellij.platform.searchEverywhere.frontend.tabs.text.SeTextTabFactory"/>
 
     <applicationService serviceInterface="com.intellij.platform.searchEverywhere.frontend.SeTabsCustomizer"
-                        serviceImplementation="com.intellij.platform.searchEverywhere.frontend.SeDefaultTabsCustomizer"/>"
+                        serviceImplementation="com.intellij.platform.searchEverywhere.frontend.SeDefaultTabsCustomizer"
+                        open="true"/>"
   </extensions>
 </idea-plugin>

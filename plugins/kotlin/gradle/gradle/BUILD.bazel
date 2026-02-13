@@ -76,7 +76,7 @@ jvm_library(
     "//java/idea-ui:ui",
     "//java/execution/impl",
     "//java/compiler/impl",
-    "//plugins/gradle:gradle-common",
+    "//plugins/gradle",
     "//plugins/gradle/tooling-extension-impl:toolingExtension-impl",
     "//plugins/kotlin/base/project-structure",
     "//plugins/kotlin/base/facet",

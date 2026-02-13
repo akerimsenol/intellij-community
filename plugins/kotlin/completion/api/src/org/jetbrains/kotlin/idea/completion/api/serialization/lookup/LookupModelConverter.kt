@@ -1,7 +1,7 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.completion.api.serialization.lookup
 
-import com.intellij.codeInsight.completion.BaseCompletionService.LOOKUP_ELEMENT_CONTRIBUTOR
+import com.intellij.codeInsight.completion.FusCompletionKeys.LOOKUP_ELEMENT_CONTRIBUTOR
 import com.intellij.codeInsight.completion.InsertHandler
 import com.intellij.codeInsight.completion.command.CommandCompletionLookupElement
 import com.intellij.codeInsight.lookup.LookupElement
@@ -15,14 +15,14 @@ import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiReference
 import org.jetbrains.annotations.ApiStatus
-import org.jetbrains.kotlin.idea.completion.api.serialization.SerializableInsertHandler
 import org.jetbrains.kotlin.idea.completion.api.serialization.SerializableLookupObject
+import org.jetbrains.kotlin.idea.completion.api.serialization.ensureSerializable
 import org.jetbrains.kotlin.idea.completion.api.serialization.lookup.model.LookupElementModel
 import org.jetbrains.kotlin.idea.completion.api.serialization.lookup.model.LookupObjectModel
 import org.jetbrains.kotlin.idea.completion.api.serialization.lookup.model.PsiElementModel
 import org.jetbrains.kotlin.idea.completion.api.serialization.lookup.model.UserDataValueModel
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.idea.completion.api.serialization.ensureSerializable
+
 /**
  * Converts a [LookupElement] to a [LookupElementModel] for serialization for Kotlin LSP
  *
@@ -151,7 +151,9 @@ object LookupModelConverter {
 
     private val keysToIgnore = setOf(
         // weighters are not needed for insertion
-        "KOTLIN_CLASSIFIER_WEIGHT", "KOTLIN_CALLABlE_WEIGHT",
+        "KOTLIN_CLASSIFIER_WEIGHT",
+        "KOTLIN_CALLABlE_WEIGHT",
+        "PREFER_NAMED_ARGUMENT_WEIGHT",
         // not needed for insertion
         "LookupArrangerMatcher",
         "LAST_COMPUTED_PRESENTATION",

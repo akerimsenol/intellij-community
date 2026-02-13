@@ -6,12 +6,28 @@ import com.intellij.util.asDisposable
 import com.jediterm.terminal.CursorShape
 import com.jediterm.terminal.emulator.mouse.MouseFormat
 import com.jediterm.terminal.emulator.mouse.MouseMode
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
 import org.jetbrains.plugins.terminal.block.reworked.TerminalShellIntegrationEventsListener
 import org.jetbrains.plugins.terminal.block.ui.withLock
-import org.jetbrains.plugins.terminal.session.impl.*
+import org.jetbrains.plugins.terminal.session.impl.TerminalAliasesReceivedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalBeepEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalCommandFinishedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalCommandStartedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalCompletionFinishedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalContentUpdatedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalOutputEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalPromptFinishedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalPromptStartedEvent
+import org.jetbrains.plugins.terminal.session.impl.TerminalState
+import org.jetbrains.plugins.terminal.session.impl.TerminalStateChangedEvent
 import org.jetbrains.plugins.terminal.session.impl.dto.toDto
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -105,7 +121,7 @@ internal fun createTerminalOutputFlow(
     isBracketedPasteMode = terminalDisplay.isBracketedPasteMode,
     windowTitle = terminalDisplay.windowTitleText,
     isShellIntegrationEnabled = false,
-    currentDirectory = services.startupOptions.workingDirectory ?: error("Working directory not set"),
+    currentDirectory = null,
   )
 
   controller.addListener(object : JediTerminalListener {
@@ -201,7 +217,7 @@ internal fun createTerminalOutputFlow(
   })
 
   shellIntegrationController.addListener(object : TerminalShellIntegrationEventsListener {
-    override fun initialized() {
+    override fun initialized(currentDirectory: String) {
       textBuffer.withLock {
         curState = curState.copy(isShellIntegrationEnabled = true)
         collectAndSendEvents(contentUpdate = null, otherEvent = TerminalStateChangedEvent(curState.toDto()))
@@ -224,8 +240,12 @@ internal fun createTerminalOutputFlow(
       collectAndSendEvents(contentUpdate = null, otherEvent = TerminalPromptFinishedEvent)
     }
 
-    override fun aliasesReceived(aliases: TerminalAliasesInfo) {
-      collectAndSendEvents(contentUpdate = null, otherEvent = TerminalAliasesReceivedEvent(aliases))
+    override fun aliasesReceived(aliasesRaw: String) {
+      collectAndSendEvents(contentUpdate = null, otherEvent = TerminalAliasesReceivedEvent(aliasesRaw))
+    }
+
+    override fun completionFinished(result: String) {
+      collectAndSendEvents(contentUpdate = null, otherEvent = TerminalCompletionFinishedEvent(result))
     }
   })
 
@@ -237,7 +257,14 @@ internal fun createTerminalOutputFlow(
   ) { directory ->
     textBuffer.withLock {
       curState = curState.copy(currentDirectory = directory)
-      collectAndSendEvents(contentUpdate = null, otherEvent = TerminalStateChangedEvent(curState.toDto()))
+      collectAndSendEvents(
+        contentUpdate = null,
+        otherEvent = TerminalStateChangedEvent(curState.toDto()),
+        ensureActive = {
+          workingDirectoryTrackingScope.ensureActive()
+          ensureEmulationActive(services.terminalStarter)
+        }
+      )
     }
   }
 

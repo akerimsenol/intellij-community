@@ -17,7 +17,6 @@ import com.intellij.grazie.rule.SentenceBatcher
 import com.intellij.grazie.rule.SentenceBatcher.AsyncBatchParser
 import com.intellij.grazie.text.TextChecker.ProofreadingContext
 import com.intellij.grazie.text.TextContent
-import com.intellij.grazie.utils.HighlightingUtil
 import com.intellij.grazie.utils.HunspellUtil
 import com.intellij.grazie.utils.getLanguageIfAvailable
 import com.intellij.openapi.Disposable
@@ -49,8 +48,7 @@ object DependencyParser {
 
   @JvmStatic
   fun getParser(text: TextContent, minimal: Boolean): AsyncBatchParser<Tree>? {
-    val stripPrefixLength = HighlightingUtil.stripPrefix(text)
-    val language = getLanguageIfAvailable(text.toString().substring(stripPrefixLength)) ?: return null
+    val language = getLanguageIfAvailable(text) ?: return null
     return getParser(language, text.containingFile, minimal)
   }
 

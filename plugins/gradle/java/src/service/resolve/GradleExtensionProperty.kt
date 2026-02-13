@@ -24,6 +24,6 @@ class GradleExtensionProperty(name: String, private val type: PsiType?, context:
   override fun getOriginInfo(): String = GRADLE_EXTENSION_PROPERTY
 
   companion object {
-    internal const val GRADLE_EXTENSION_PROPERTY: String = "by gradle sync"
+    const val GRADLE_EXTENSION_PROPERTY: String = "by gradle sync"
   }
 }

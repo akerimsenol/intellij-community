@@ -13,7 +13,15 @@ create_kotlinc_options(
 jvm_library(
   name = "durability",
   visibility = ["//visibility:public"],
-  srcs = glob([], allow_empty = True)
+  srcs = glob([], allow_empty = True),
+  runtime_deps = [
+    "//platform/util-ex",
+    "@lib//:kotlin-stdlib",
+    "//platform/platform-impl:ide-impl",
+    "//platform/util",
+    "//platform/util/storages",
+    "//libraries/fastutil",
+  ]
 )
 
 jvm_library(
@@ -25,6 +33,7 @@ jvm_library(
   deps = [
     "//platform/util-ex",
     "@lib//:ktor-network-tls",
+    "@lib//:kotlin-stdlib",
     "//libraries/io",
     "//platform/platform-impl:ide-impl",
     "//libraries/kotlinx/coroutines/core",
@@ -35,7 +44,8 @@ jvm_library(
     "//platform/util",
     "//platform/util/storages",
     "//libraries/fastutil",
-  ]
+  ],
+  runtime_deps = [":durability"]
 )
 ### auto-generated section `build intellij.platform.durability` end
 

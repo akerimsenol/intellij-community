@@ -76,5 +76,21 @@ common:ci --announce_rc
 # TeamCity-specific options
 common:teamcity --show_progress_rate_limit=30
 
+# Avoid
+# Exception in thread "main" java.io.IOException: Error getting terminal size: GetConsoleScreenBufferInfo error 6
+# 	at coursier.jniutils.WindowsAnsiTerminal.terminalSize(WindowsAnsiTerminal.java:10)
+common:windows --repo_env=COURSIER_NO_TERM=true
+common:windows --repo_env=COURSIER_PROGRESS=false
+# Enable on Bazel 9
+# common --experimental_strict_repo_env
+
 # A workaround for https://github.com/bazelbuild/rules_kotlin/issues/1352
 common --repo_env=ANDROID_HOME=
+
+common --incompatible_enable_proto_toolchain_resolution
+common --@protobuf//bazel/toolchains:prefer_prebuilt_protoc=true
+
+try-import %workspace%/../../../../build/remote_cache.bazelrc
+
+# Enable remote downloader config w/ allowed hosts and caching proxies
+common --downloader_config=../../../build/bazel_downloader.cfg

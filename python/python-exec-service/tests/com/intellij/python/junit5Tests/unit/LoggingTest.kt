@@ -171,6 +171,7 @@ private class LoggingTest {
   companion object {
     fun process(vararg command: String) =
       LoggedProcess(
+        weight = null,
         traceContext = null,
         pid = 123,
         startedAt = Clock.System.now(),
@@ -230,6 +231,7 @@ private class LoggingTest {
           override fun pid(): Long =
             pid
         },
+        null,
         traceContext,
         startedAt,
         cwd,

@@ -4,7 +4,11 @@ package com.intellij.xdebugger.impl;
 import com.intellij.configurationStore.XmlSerializer;
 import com.intellij.lang.Language;
 import com.intellij.openapi.application.PathMacroFilter;
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.Service;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.options.advanced.AdvancedSettings;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.containers.ContainerUtil;
@@ -12,6 +16,7 @@ import com.intellij.util.xmlb.annotations.Tag;
 import com.intellij.xdebugger.XExpression;
 import com.intellij.xdebugger.evaluation.EvaluationMode;
 import com.intellij.xdebugger.impl.breakpoints.XExpressionImpl;
+import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xml.util.XmlStringUtil;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
@@ -38,7 +43,7 @@ public final class XDebuggerHistoryManager implements PersistentStateComponent<E
   }
 
   public boolean addRecentExpression(@NotNull @NonNls String id, @Nullable XExpression expression) {
-    if (XDebuggerUtilImpl.isEmptyExpression(expression) || expression.getExpression().length() > 100000) {
+    if (DebuggerUIUtil.isEmptyExpression(expression) || expression.getExpression().length() > 100000) {
       return false;
     }
 

@@ -74,6 +74,7 @@ jvm_library(
     "//platform/kernel/shared:kernel",
     "//platform/vcs-impl/shared",
     "//libraries/jgoodies/forms",
+    "//platform/project-frame",
     "//platform/observable",
     "//platform/platform-impl/concurrency",
     "//platform/project/shared:project",
@@ -81,6 +82,7 @@ jvm_library(
     "//platform/platform-impl/rpc",
     "//platform/polySymbols",
     "//platform/execution",
+    "//platform/eel",
   ]
 )
 
@@ -160,6 +162,7 @@ jvm_library(
     "//platform/vcs-impl/shared",
     "//platform/vcs-impl/shared:shared_test_lib",
     "//libraries/jgoodies/forms",
+    "//platform/project-frame",
     "//platform/observable",
     "//platform/platform-impl/concurrency",
     "//platform/project/shared:project",
@@ -168,6 +171,7 @@ jvm_library(
     "//platform/diff-impl/tests:tests_test_lib",
     "//platform/polySymbols",
     "//platform/execution",
+    "//platform/eel",
   ]
 )
 ### auto-generated section `build intellij.platform.vcs.impl` end

@@ -5,36 +5,52 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.util.Disposer
+import com.jetbrains.python.packaging.PyPackageUtil
 import com.jetbrains.python.packaging.bridge.PythonPackageManagementServiceBridge
 import com.jetbrains.python.packaging.requirementsTxt.PythonRequirementTxtSdkUtils
 import com.jetbrains.python.packaging.utils.PyPackageCoroutine
 import com.jetbrains.python.sdk.PythonSdkAdditionalData
+import com.jetbrains.python.sdk.PythonSdkUpdater
 import com.jetbrains.python.sdk.getOrCreateAdditionalData
+import com.jetbrains.python.sdk.legacy.PythonSdkUtil
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 internal class PythonPackageManagerServiceImpl(private val serviceScope: CoroutineScope) : PythonPackageManagerService, Disposable {
-  private val cache = ConcurrentHashMap<UUID, Deferred<PythonPackageManager>>()
+  private val cache = ConcurrentHashMap<UUID, PythonPackageManager>()
 
   private val bridgeCache = ConcurrentHashMap<UUID, PythonPackageManagementServiceBridge>()
 
   /**
    * Requires Sdk to be Python Sdk and have PythonSdkAdditionalData.
    */
-  override suspend fun forSdk(project: Project, sdk: Sdk): PythonPackageManager {
+  override fun forSdk(project: Project, sdk: Sdk): PythonPackageManager {
+    check(!PythonSdkUtil.isDisposed(sdk)) {
+      "Requesting a package manager for an already disposed SDK $sdk (${sdk.javaClass})"
+    }
+
     val cacheKey = (sdk.getOrCreateAdditionalData()).uuid
 
     return cache.computeIfAbsent(cacheKey) {
-      serviceScope.async {
-        val createdSdk = PythonPackageManagerProvider.EP_NAME.extensionList.firstNotNullOf { it.createPackageManagerForSdk(project, sdk) }
-        Disposer.register(PyPackageCoroutine.getInstance(project), createdSdk)
-        PythonRequirementTxtSdkUtils.migrateRequirementsTxtPathFromModuleToSdk(project, sdk)
-        createdSdk
+      val createdSdk = PythonPackageManagerProvider.EP_NAME.extensionList.firstNotNullOf { it.createPackageManagerForSdk(project, sdk) }
+      Disposer.register(PyPackageCoroutine.getInstance(project), createdSdk)
+      PythonRequirementTxtSdkUtils.migrateRequirementsTxtPathFromModuleToSdk(project, sdk)
+
+      val vfsListenerDisposable = Disposer.newDisposable("VFS listener for ${sdk.name} in scope of ${project.name}")
+      Disposer.register(createdSdk, vfsListenerDisposable)
+
+      if (sdk is Disposable) {
+        Disposer.register(sdk, Disposable { cache.remove(cacheKey) })
+        Disposer.register(sdk, Disposable { Disposer.dispose(vfsListenerDisposable) })
       }
-    }.await()
+
+      PyPackageUtil.runOnChangeUnderInterpreterPaths(sdk, vfsListenerDisposable) {
+        PythonSdkUpdater.scheduleUpdate(sdk, project)
+      }
+
+      createdSdk
+    }
   }
 
   override fun bridgeForSdk(project: Project, sdk: Sdk): PythonPackageManagementServiceBridge {

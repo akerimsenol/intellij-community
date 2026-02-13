@@ -7,6 +7,7 @@ create_kotlinc_options(
   opt_in = [
     "org.jetbrains.kotlin.idea.base.util.K1ModeProjectStructureApi",
     "org.jetbrains.kotlin.utils.addToStdlib.UnsafeCastFunction",
+    "org.jetbrains.kotlin.K1Deprecation",
   ]
 )
 
@@ -60,7 +61,6 @@ jvm_library(
     "//platform/execution-impl",
     "//plugins/kotlin/jsr223",
     "//plugins/kotlin/base/scripting/scripting.k1",
-    "//plugins/kotlin/base/scripting/scripting.shared",
     "//platform/execution",
     "//platform/lang-api:lang",
   ]

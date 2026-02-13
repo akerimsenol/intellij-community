@@ -14,7 +14,12 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
-import com.intellij.openapi.roots.*;
+import com.intellij.openapi.roots.ModifiableRootModel;
+import com.intellij.openapi.roots.ModuleOrderEntry;
+import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.roots.OrderEntry;
+import com.intellij.openapi.roots.ProjectFileIndex;
+import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.impl.ModifiableModelCommitter;
 import com.intellij.openapi.roots.ui.configuration.actions.ModuleDeleteProvider;
 import com.intellij.openapi.util.Disposer;
@@ -26,6 +31,7 @@ import com.intellij.util.EventDispatcher;
 import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.concurrency.annotations.RequiresReadLock;
+import com.intellij.util.concurrency.annotations.RequiresReadLockAbsence;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.PathKt;
 import com.intellij.util.ui.update.MergingQueueUtil;
@@ -44,17 +50,32 @@ import org.jetbrains.idea.maven.importing.MavenImportUtil;
 import org.jetbrains.idea.maven.importing.MavenPomPathModuleService;
 import org.jetbrains.idea.maven.importing.MavenProjectImporter;
 import org.jetbrains.idea.maven.indices.MavenIndicesManager;
-import org.jetbrains.idea.maven.model.*;
+import org.jetbrains.idea.maven.model.MavenArtifact;
+import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
+import org.jetbrains.idea.maven.model.MavenId;
+import org.jetbrains.idea.maven.model.MavenProfileKind;
+import org.jetbrains.idea.maven.model.MavenRemoteRepository;
 import org.jetbrains.idea.maven.navigator.MavenProjectsNavigator;
 import org.jetbrains.idea.maven.project.auto.reload.MavenProjectManagerWatcher;
 import org.jetbrains.idea.maven.tasks.MavenShortcutsManager;
 import org.jetbrains.idea.maven.tasks.MavenTasksManager;
-import org.jetbrains.idea.maven.utils.*;
+import org.jetbrains.idea.maven.utils.MavenLog;
+import org.jetbrains.idea.maven.utils.MavenMergingUpdateQueue;
+import org.jetbrains.idea.maven.utils.MavenRehighlighter;
+import org.jetbrains.idea.maven.utils.MavenSimpleProjectComponent;
+import org.jetbrains.idea.maven.utils.MavenUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -76,7 +97,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
 
   private final MavenEmbeddersManager myEmbeddersManager;
 
-  private final @NotNull MavenProjectsTree myProjectsTree = new MavenProjectsTree(getProject());
+  private final MavenProjectsTree myProjectsTree = new MavenProjectsTree(getProject());
   private final AtomicReference<MavenProjectManagerWatcher> myWatcherRef = new AtomicReference<>(null);
   private volatile Exception myWatcherCreationTrace;
 
@@ -171,23 +192,29 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
     return getProjectsTree().getFilterConfigCrc(projectFileIndex);
   }
 
+
   @TestOnly
   public void initForTests() {
-    initProjectsTree();
-    doInit();
+    //revise when porting to kotlin
+    runInBackgroundBlocking(() -> {
+      initProjectsTree();
+      doInit();
+    });
   }
 
+  protected abstract void runInBackgroundBlocking(Runnable r);
+
   private void doInit() {
+    if (isInitialized.get()) return;
     initLock.lock();
     try {
-      if (isInitialized.getAndSet(true)) {
-        return;
-      }
+      if (isInitialized.get()) return;
       initPreloadMavenServices();
       initWorkers();
       updateTabTitles();
     }
     finally {
+      isInitialized.set(true);
       initLock.unlock();
     }
   }
@@ -254,20 +281,26 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
     }
   }
 
+  @RequiresReadLockAbsence
   private void initProjectsTree() {
     if (projectsTreeInitialized.get()) return;
     initLock.lock();
     try {
       if (projectsTreeInitialized.get()) return;
-      Path path = getProjectsTreeFile();
-      myProjectsTree.read(path);
-      applyStateToTree(myProjectsTree, this);
-      myProjectsTree.addListener(myProjectsTreeDispatcher.getMulticaster(), this);
-      projectsTreeInitialized.set(true);
+      doInitTree();
     }
     finally {
+      projectsTreeInitialized.set(true);
       initLock.unlock();
     }
+  }
+
+  @RequiresReadLockAbsence
+  private void doInitTree() {
+    Path path = getProjectsTreeFile();
+    myProjectsTree.read(path);
+    applyStateToTree(myProjectsTree, this);
+    myProjectsTree.addListener(myProjectsTreeDispatcher.getMulticaster(), this);
   }
 
   private void applyTreeToState() {
@@ -392,7 +425,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
     return myEmbeddersManager;
   }
 
-  private boolean isInitialized() {
+  public boolean isInitialized() {
     return !initLock.isLocked() && isInitialized.get();
   }
 
@@ -439,7 +472,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public @NotNull MavenExplicitProfiles getExplicitProfiles() {
-    return getProjectsTree().getExplicitProfiles();
+    return new MavenExplicitProfiles(getWorkspaceSettings().enabledProfiles, getWorkspaceSettings().disabledProfiles);
   }
 
   public @NotNull Collection<String> getAvailableProfiles() {
@@ -554,7 +587,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public @NotNull List<String> getIgnoredFilesPaths() {
-    return getProjectsTree().getIgnoredFilesPaths();
+    return new ArrayList<>(getState().ignoredFiles);
   }
 
   public void setIgnoredFilesPaths(@NotNull List<String> paths) {
@@ -579,7 +612,7 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public @NotNull List<String> getIgnoredFilesPatterns() {
-    return getProjectsTree().getIgnoredFilesPatterns();
+    return new ArrayList<>(getState().ignoredPathMasks);
   }
 
   public void setIgnoredFilesPatterns(@NotNull List<String> patterns) {
@@ -623,7 +656,11 @@ public abstract class MavenProjectsManager extends MavenSimpleProjectComponent
   }
 
   public synchronized void setExplicitProfiles(MavenExplicitProfiles profiles) {
-    getProjectsTree().setExplicitProfiles(profiles);
+    getWorkspaceSettings().setEnabledProfiles(profiles.getEnabledProfiles());
+    getWorkspaceSettings().setDisabledProfiles(profiles.getDisabledProfiles());
+    if (isInitialized()) {
+      getProjectsTree().setExplicitProfiles(profiles);
+    }
   }
 
   @ApiStatus.Internal

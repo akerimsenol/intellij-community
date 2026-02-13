@@ -53,7 +53,6 @@ import org.jetbrains.idea.maven.server.RemotePathTransformerFactory
 import org.jetbrains.idea.maven.utils.MavenLog
 import org.jetbrains.idea.maven.utils.MavenProgressIndicator
 import org.jetbrains.idea.maven.utils.MavenProgressIndicator.MavenProgressTracker
-import org.jetbrains.idea.maven.utils.MavenUtil
 import org.junit.Assume.assumeTrue
 import java.awt.HeadlessException
 import java.io.IOException
@@ -170,7 +169,7 @@ abstract class MavenTestCase : UsefulTestCase() {
     val jdkPath = EelTestJdkProvider.getJdkPath()
     if (myJdk == null && jdkPath != null) {
       myJdk = JavaSdk.getInstance().createJdk("Maven Test JDK", jdkPath.toString())
-      val jdkTable = ProjectJdkTable.getInstance()
+      val jdkTable = ProjectJdkTable.getInstance(project)
       WriteAction.runAndWait<RuntimeException> { jdkTable.addJdk(myJdk!!) }
     }
     if (myJdk != null) {
@@ -181,7 +180,7 @@ abstract class MavenTestCase : UsefulTestCase() {
   private fun tearDownJdk() {
     if (myJdk != null) {
       WriteAction.runAndWait<RuntimeException> {
-        val jdkTable = ProjectJdkTable.getInstance()
+        val jdkTable = ProjectJdkTable.getInstance(project)
         jdkTable.removeJdk(myJdk!!)
       }
     }
@@ -222,8 +221,8 @@ abstract class MavenTestCase : UsefulTestCase() {
       },
       ThrowableRunnable { MavenServerManager.getInstance().closeAllConnectorsAndWait() },
       ThrowableRunnable { checkAllMavenConnectorsDisposed() },
-      ThrowableRunnable { myProject = null },
       ThrowableRunnable { tearDownJdk() },
+      ThrowableRunnable { myProject = null },
       ThrowableRunnable {
         val defaultProject = ProjectManager.getInstance().defaultProject
         val mavenIndicesManager = defaultProject.getServiceIfCreated(MavenIndicesManager::class.java)
@@ -480,7 +479,7 @@ abstract class MavenTestCase : UsefulTestCase() {
 
   protected fun refreshFiles(files: List<VirtualFile>) {
     val relativePaths = files.map { dir.relativize(it.path.toNioPathOrNull()!!) }
-    MavenLog.LOG.warn("Refreshing files: $relativePaths")
+    MavenLog.LOG.debug("Refreshing files: $relativePaths")
     LocalFileSystem.getInstance().refreshFiles(files)
   }
 
@@ -628,7 +627,7 @@ abstract class MavenTestCase : UsefulTestCase() {
 
   private fun setFileContent(file: Path, content: String) {
     val relativePath = dir.relativize(file)
-    MavenLog.LOG.warn("Writing content to $relativePath")
+    MavenLog.LOG.debug("Writing content to $relativePath")
     Files.write(file, content.toByteArray(StandardCharsets.UTF_8))
   }
 

@@ -20,8 +20,17 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
 import com.intellij.util.concurrency.annotations.RequiresEdt;
 import com.intellij.util.containers.ContainerUtil;
-import git4idea.*;
-import git4idea.commands.*;
+import git4idea.GitBranch;
+import git4idea.GitLocalBranch;
+import git4idea.GitReference;
+import git4idea.GitRemoteBranch;
+import git4idea.GitTag;
+import git4idea.GitUtil;
+import git4idea.commands.Git;
+import git4idea.commands.GitCommand;
+import git4idea.commands.GitCommandResult;
+import git4idea.commands.GitLineHandler;
+import git4idea.commands.GitLineHandlerListener;
 import git4idea.config.GitVcsSettings;
 import git4idea.i18n.GitBundle;
 import git4idea.repo.GitBranchTrackInfo;
@@ -32,12 +41,22 @@ import git4idea.ui.branch.GitMultiRootBranchConfig;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import one.util.streamex.StreamEx;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.CalledInAny;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -258,10 +277,6 @@ public final class GitBranchUtil {
 
   public static @NotNull List<GitRemoteBranch> getCommonRemoteBranches(@NotNull Collection<? extends GitRepository> repositories) {
     return collectCommon(repositories.stream().map(repository -> repository.getBranches().getRemoteBranches()));
-  }
-
-  public static @NotNull List<GitTag> getCommonTags(@NotNull Collection<? extends GitRepository> repositories) {
-    return collectCommon(repositories.stream().map(repository -> repository.getTagHolder().getTags().keySet()));
   }
 
   public static @NotNull <T> List<T> collectCommon(@NotNull Stream<? extends Collection<T>> groups) {

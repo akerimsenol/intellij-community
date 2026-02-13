@@ -55,18 +55,24 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JPanel;
+import java.awt.BorderLayout;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 public class PyIntegratedToolsConfigurable implements SearchableConfigurable {
   private JPanel myMainPanel;
   private JComboBox<PyAbstractTestFactory<?>> myTestRunnerComboBox;
   private JComboBox<DocStringFormat> myDocstringFormatComboBox;
   private PyTestRunConfigurationsModel myModel;
-  private final PyPackageRequirementsSettings myPackagingSettings;
   private final @Nullable Module myModule;
   private final @NotNull Project myProject;
   private final PyDocumentationSettings myDocumentationSettings;
@@ -97,7 +103,7 @@ public class PyIntegratedToolsConfigurable implements SearchableConfigurable {
     myModule = module;
     myProject = project;
     myDocumentationSettings = PyDocumentationSettings.getInstance(myModule);
-    myPackagingSettings = PyPackageRequirementsSettings.getInstance(module);
+    PyPackageRequirementsSettings packagingSettings = PyPackageRequirementsSettings.getInstance(module);
     myDocstringFormatComboBox.setModel(new CollectionComboBoxModel<>(new ArrayList<>(Arrays.asList(DocStringFormat.values())),
                                                                      myDocumentationSettings.getFormat()));
     myDocstringFormatComboBox.setRenderer(SimpleListCellRenderer.create("", DocStringFormat::getName));
@@ -168,7 +174,8 @@ public class PyIntegratedToolsConfigurable implements SearchableConfigurable {
           var factory = myModel.getSelected();
           if (factory != null && !factory.isFrameworkInstalled(myProject, sdk)) {
             return new ValidationResult(PyBundle.message("runcfg.testing.no.test.framework", factory.getName()),
-                                        createQuickFix(sdk, facetErrorPanel, factory.getPackageRequired()));
+                                        // isFrameworkInstalled() == false => getPackageSpec() != null
+                                        createQuickFix(sdk, facetErrorPanel, Objects.requireNonNull(factory.getPackageSpec()).getPackageName()));
           }
         }
         return ValidationResult.OK;

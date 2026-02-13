@@ -20,10 +20,10 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.platform.debugger.impl.rpc.toSimpleTextAttributes
 import com.intellij.platform.debugger.impl.shared.SplitDebuggerAction
+import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.unscramble.DumpItem
 import com.intellij.util.BitUtil
-import com.intellij.platform.debugger.impl.shared.proxy.XDebugSessionProxy
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil
 import fleet.rpc.core.util.map
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +35,7 @@ import org.jetbrains.annotations.Nls
 import java.awt.event.InputEvent
 import javax.swing.Icon
 
-private class ThreadDumpAction : DumbAwareAction(), SplitDebuggerAction {
+internal class ThreadDumpAction : DumbAwareAction(), SplitDebuggerAction {
 
   @OptIn(ExperimentalCoroutinesApi::class)
   override fun actionPerformed(e: AnActionEvent) {

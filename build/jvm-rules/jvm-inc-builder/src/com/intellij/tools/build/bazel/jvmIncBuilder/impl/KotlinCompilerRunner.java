@@ -1,14 +1,19 @@
 // Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.tools.build.bazel.jvmIncBuilder.impl;
 
-import org.jetbrains.kotlin.com.intellij.openapi.progress.ProcessCanceledException;
-import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.tools.build.bazel.jvmIncBuilder.*;
+import com.intellij.tools.build.bazel.jvmIncBuilder.BuildContext;
+import com.intellij.tools.build.bazel.jvmIncBuilder.CLFlags;
+import com.intellij.tools.build.bazel.jvmIncBuilder.DataPaths;
+import com.intellij.tools.build.bazel.jvmIncBuilder.DiagnosticSink;
+import com.intellij.tools.build.bazel.jvmIncBuilder.ExitCode;
+import com.intellij.tools.build.bazel.jvmIncBuilder.Message;
+import com.intellij.tools.build.bazel.jvmIncBuilder.StorageManager;
+import com.intellij.tools.build.bazel.jvmIncBuilder.ZipOutputBuilder;
+import com.intellij.tools.build.bazel.jvmIncBuilder.impl.fir.ImplicitTypeTrackerPluginRegistrar;
 import com.intellij.tools.build.bazel.jvmIncBuilder.runner.CompilerDataSink;
 import com.intellij.tools.build.bazel.jvmIncBuilder.runner.CompilerRunner;
 import com.intellij.tools.build.bazel.jvmIncBuilder.runner.OutputOrigin;
 import com.intellij.tools.build.bazel.jvmIncBuilder.runner.OutputSink;
-import org.jetbrains.kotlin.com.intellij.util.containers.ContainerUtil;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
@@ -26,13 +31,17 @@ import org.jetbrains.kotlin.cli.common.config.ContentRoot;
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector;
 import org.jetbrains.kotlin.cli.jvm.config.VirtualJvmClasspathRoot;
 import org.jetbrains.kotlin.cli.pipeline.AbstractCliPipeline;
+import org.jetbrains.kotlin.com.intellij.openapi.progress.ProcessCanceledException;
+import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.kotlin.compiler.plugin.CliOptionValue;
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor;
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
 import org.jetbrains.kotlin.config.Services;
-import org.jetbrains.kotlin.incremental.*;
-import org.jetbrains.kotlin.incremental.components.EnumWhenTracker;
+import org.jetbrains.kotlin.incremental.ConstantRef;
+import org.jetbrains.kotlin.incremental.ImportTrackerImpl;
+import org.jetbrains.kotlin.incremental.InlineConstTrackerImpl;
+import org.jetbrains.kotlin.incremental.LookupTrackerImpl;
 import org.jetbrains.kotlin.incremental.components.ImportTracker;
 import org.jetbrains.kotlin.incremental.components.InlineConstTracker;
 import org.jetbrains.kotlin.incremental.components.LookupTracker;
@@ -47,11 +56,22 @@ import java.io.IOException;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import static com.intellij.tools.build.bazel.jvmIncBuilder.impl.KotlinPluginsKt.configurePlugins;
-import static org.jetbrains.jps.util.Iterators.*;
+import static org.jetbrains.jps.util.Iterators.collect;
+import static org.jetbrains.jps.util.Iterators.filter;
+import static org.jetbrains.jps.util.Iterators.find;
+import static org.jetbrains.jps.util.Iterators.flat;
+import static org.jetbrains.jps.util.Iterators.isEmpty;
+import static org.jetbrains.jps.util.Iterators.map;
 import static org.jetbrains.kotlin.cli.common.ExitCode.OK;
 import static org.jetbrains.kotlin.cli.common.arguments.ParseCommandLineArgumentsKt.parseCommandLineArguments;
 import static org.jetbrains.kotlin.cli.plugins.PluginsOptionsParserKt.processCompilerPluginOptions;
@@ -65,9 +85,9 @@ public class KotlinCompilerRunner implements CompilerRunner {
 
   private LookupTrackerImpl lookupTracker;
   private InlineConstTrackerImpl inlineConstTracker;
-  private EnumWhenTrackerImpl enumWhenTracker;
   private ImportTrackerImpl importTracker;
-  private final @NotNull Map<@NotNull String, @NotNull String> myPluginIdToPluginClasspath = new HashMap<>();
+  private ImplicitTypeDependencyTracker inferredTypeTracker;
+  private final @NotNull Map<@NotNull String, @NotNull PluginClasspathConfig> myPluginIdToPluginClasspath = new HashMap<>();
   private final @NotNull Map<@NotNull String, List<CliOptionValue>> myInternalPluginIdToOptions = new HashMap<>();
   private final List<String> myJavaSources;
 
@@ -82,8 +102,12 @@ public class KotlinCompilerRunner implements CompilerRunner {
     // classpath map for compiler plugins
     Map<CLFlags, List<String>> flags = context.getFlags();
     Iterator<String> pluginCp = CLFlags.PLUGIN_CLASSPATH.getValue(flags).iterator();
+    Path baseDir = context.getBaseDir();
     for (String pluginId : CLFlags.PLUGIN_ID.getValue(flags)) {
-      myPluginIdToPluginClasspath.put(pluginId, pluginCp.hasNext()? pluginCp.next() : "");
+      String classpath = pluginCp.hasNext()? pluginCp.next() : "";
+      myPluginIdToPluginClasspath.put(pluginId, new PluginClasspathConfig(
+        classpath.isBlank()? List.of() : collect(map(List.of(classpath.split(":")), relPath -> baseDir.resolve(relPath).toAbsolutePath().normalize()), new ArrayList<>())
+      ));
     }
 
     for (String entry : CLFlags.PLUGIN_OPTIONS.getValue(flags)) {
@@ -211,8 +235,10 @@ public class KotlinCompilerRunner implements CompilerRunner {
 
     for (GeneratedClass outputClass : generated) {
       processInlineConstTracker(inlineConstTracker, outputClass, out);
-      processBothEnumWhenAndImportTrackers(enumWhenTracker, importTracker, outputClass, out);
+      processImportTracker(importTracker, outputClass, out);
     }
+
+    processInferredTypeTracker(inferredTypeTracker, out);
   }
 
 
@@ -248,22 +274,12 @@ public class KotlinCompilerRunner implements CompilerRunner {
     }
   }
 
-  private static void processBothEnumWhenAndImportTrackers(EnumWhenTrackerImpl enumWhenTracker, ImportTrackerImpl importTracker, GeneratedClass output, OutputSink callback) {
-    Map<String, Collection<String>> whenMap = enumWhenTracker.getWhenExpressionFilePathToEnumClassMap();
+  private static void processImportTracker(ImportTrackerImpl importTracker, GeneratedClass output, OutputSink callback) {
     Map<String, Collection<String>> importMap = importTracker.getFilePathToImportedFqNamesMap();
-
-    Collection<String> enumFqNameClasses = whenMap.get(output.source.getPath());
     Collection<String> importedFqNames = importMap.get(output.source.getPath());
-
-    if (enumFqNameClasses == null && importedFqNames == null) return;
-
-    List<String> enumClassesWithStar = enumFqNameClasses != null ?
-                                       ContainerUtil.map(enumFqNameClasses, name -> name + ".*") :
-                                       new ArrayList<>();
-
-    callback.registerImports(output.jvmClassName,
-                             importedFqNames != null ? importedFqNames : new ArrayList<>(),
-                             enumClassesWithStar);
+    if (importedFqNames != null) {
+      callback.registerImports(output.jvmClassName, importedFqNames, List.of());
+    }
   }
 
   private void processLookupTracker(LookupTrackerImpl lookupTracker, OutputSink callback) {
@@ -279,16 +295,23 @@ public class KotlinCompilerRunner implements CompilerRunner {
     }
   }
 
+  private void processInferredTypeTracker(ImplicitTypeDependencyTracker tracker, OutputSink callback) {
+    // Mark files that have public API declarations with inferred types depending on external definitions.
+    // These files need special handling during incremental compilation.
+    for (String sourceFilePath : tracker.getAffectedFiles()) {
+      NodeSource source = myPathMapper.toNodeSource(sourceFilePath);
+      callback.registerImplicitTypes(source);
+    }
+  }
+
   private Services buildServices(String moduleName, IncrementalCache cacheImpl, VirtualFile outputRoot) {
     Services.Builder builder = new Services.Builder();
     lookupTracker = new LookupTrackerImpl(LookupTracker.DO_NOTHING.INSTANCE);
     inlineConstTracker = new InlineConstTrackerImpl();
-    enumWhenTracker = new EnumWhenTrackerImpl();
     importTracker = new ImportTrackerImpl();
 
     builder.register(LookupTracker.class, lookupTracker);
     builder.register(InlineConstTracker.class, inlineConstTracker);
-    builder.register(EnumWhenTracker.class, enumWhenTracker);
     builder.register(ImportTracker.class, importTracker);
     builder.register(
       IncrementalCompilationComponents.class,
@@ -301,18 +324,19 @@ public class KotlinCompilerRunner implements CompilerRunner {
   }
 
   private AbstractCliPipeline<K2JVMCompilerArguments> createPipeline(OutputSink out, VirtualFile outputRoot, Consumer<GeneratedFile> outputItemCollector) throws IOException {
-    return new BazelJvmCliPipeline(createCompilerConfigurationUpdater(out, outputRoot), createOutputConsumer(out, outputItemCollector));
+    return new BazelJvmCliPipeline(createCompilerConfigurationUpdater(outputRoot), createOutputConsumer(out, outputItemCollector));
   }
 
-  private @NotNull Function1<? super @NotNull CompilerConfiguration, @NotNull Unit> createCompilerConfigurationUpdater(OutputSink out, VirtualFile outputRoot) throws IOException {
+  private @NotNull Function1<? super @NotNull CompilerConfiguration, @NotNull Unit> createCompilerConfigurationUpdater(VirtualFile outputRoot) throws IOException {
     var abiConsumer = createAbiOutputConsumer(myStorageManager.getAbiOutputBuilder());
+    inferredTypeTracker = new ImplicitTypeDependencyTracker();
     return configuration -> {
       List<ContentRoot> contentRootList = new ArrayList<>();
       contentRootList.add(new VirtualJvmClasspathRoot(outputRoot, false, true));
       contentRootList.addAll(configuration.getList(CLIConfigurationKeys.CONTENT_ROOTS));
       configuration.put(CLIConfigurationKeys.CONTENT_ROOTS, contentRootList);
 
-      configurePlugins(myPluginIdToPluginClasspath, myInternalPluginIdToOptions, myContext.getBaseDir(), abiConsumer, out, myStorageManager, registeredPluginInfo -> {
+      configurePlugins(myPluginIdToPluginClasspath, myInternalPluginIdToOptions, abiConsumer, registeredPluginInfo -> {
         CompilerPluginRegistrar registrar = Objects.requireNonNull(registeredPluginInfo.getCompilerPluginRegistrar());
         configuration.add(CompilerPluginRegistrar.Companion.getCOMPILER_PLUGIN_REGISTRARS(), registrar);
         List<CliOptionValue> pluginOptions = registeredPluginInfo.getPluginOptions();
@@ -322,6 +346,12 @@ public class KotlinCompilerRunner implements CompilerRunner {
         }
         return Unit.INSTANCE;
       });
+
+      // Register the inferred type dependency tracker extension
+      configuration.add(
+        CompilerPluginRegistrar.Companion.getCOMPILER_PLUGIN_REGISTRARS(),
+        new ImplicitTypeTrackerPluginRegistrar(inferredTypeTracker)
+      );
 
       return Unit.INSTANCE;
     };
@@ -385,6 +415,7 @@ public class KotlinCompilerRunner implements CompilerRunner {
     if (languageVersion != null) {
       arguments.setLanguageVersion(languageVersion);
     }
+    arguments.setProgressiveMode(CLFlags.PROGRESSIVE.isFlagSet(flags));
     String explicitApiMode = CLFlags.X_EXPLICIT_API_MODE.getOptionalScalarValue(flags);
     if (explicitApiMode != null) {
       arguments.setExplicitApi(explicitApiMode);
@@ -407,6 +438,8 @@ public class KotlinCompilerRunner implements CompilerRunner {
     arguments.setContextParameters(CLFlags.X_CONTEXT_PARAMETERS.isFlagSet(flags));
     arguments.setNoCallAssertions(CLFlags.X_NO_CALL_ASSERTIONS.isFlagSet(flags));
     arguments.setNoParamAssertions(CLFlags.X_NO_PARAM_ASSERTIONS.isFlagSet(flags));
+    arguments.setRenderInternalDiagnosticNames(CLFlags.X_RENDER_INTERNAL_DIAGNOSTIC_NAMES.isFlagSet(flags));
+    arguments.setReportAllWarnings(CLFlags.X_REPORT_ALL_WARNINGS.isFlagSet(flags));
     arguments.setSamConversions(CLFlags.X_SAM_CONVERSIONS.getOptionalScalarValue(flags));
     arguments.setConsistentDataClassCopyVisibility(CLFlags.X_CONSISTENT_DATA_CLASS_COPY_VISIBILITY.isFlagSet(flags));
     Iterable<String> friends = CLFlags.FRIENDS.getValue(flags);
@@ -435,8 +468,8 @@ public class KotlinCompilerRunner implements CompilerRunner {
     List<String> nullTrackers = new ArrayList<>();
     if (lookupTracker == null) nullTrackers.add("lookup tracker");
     if (inlineConstTracker == null) nullTrackers.add("inline const tracker");
-    if (enumWhenTracker == null) nullTrackers.add("enum-when tracker");
     if (importTracker == null) nullTrackers.add("import tracker");
+    if (inferredTypeTracker == null) nullTrackers.add("inferred type tracker");
 
     if (!nullTrackers.isEmpty()) {
       throw new IllegalStateException(

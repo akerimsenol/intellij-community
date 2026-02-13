@@ -1,10 +1,17 @@
 // Copyright 2000-2024 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.xdebugger.impl.ui.tree;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.ide.HelpTooltipManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.ui.*;
+import com.intellij.ui.AppUIUtil;
+import com.intellij.ui.ClientProperty;
+import com.intellij.ui.ColoredTreeCellRenderer;
+import com.intellij.ui.ExpandableItemsHandler;
+import com.intellij.ui.ScreenUtil;
+import com.intellij.ui.SimpleColoredComponent;
+import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.speedSearch.SpeedSearchUtil;
 import com.intellij.xdebugger.XDebuggerBundle;
 import com.intellij.xdebugger.frame.ImmediateFullValueEvaluator;
@@ -12,12 +19,17 @@ import com.intellij.xdebugger.frame.XDebuggerTreeNodeHyperlink;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XDebuggerTreeNode;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
-import icons.PlatformDebuggerImplIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.Icon;
+import javax.swing.JTree;
+import javax.swing.JViewport;
+import javax.swing.SwingUtilities;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.util.function.Supplier;
 
@@ -127,7 +139,7 @@ public class XDebuggerTreeRenderer extends ColoredTreeCellRenderer {
     Icon icon = node instanceof XValueNodeImpl &&
                 node.getTree().getPinToTopManager().isEnabled() &&
                 node.getTree().getPinToTopManager().isItemPinned((XValueNodeImpl)node) ?
-                PlatformDebuggerImplIcons.PinToTop.PinnedItem : node.getIcon();
+                AllIcons.Debugger.PinToTop.PinnedItem : node.getIcon();
     setIcon(icon);
   }
 

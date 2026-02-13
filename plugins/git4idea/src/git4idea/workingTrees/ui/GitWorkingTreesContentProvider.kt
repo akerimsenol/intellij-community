@@ -1,18 +1,23 @@
-// Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2026 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package git4idea.workingTrees.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.*
-import com.intellij.openapi.actionSystem.ActionPlaces.CHANGES_VIEW_TOOLBAR
+import com.intellij.openapi.actionSystem.ActionGroup
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.DataSink
+import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
+import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.actionSystem.toolbarLayout.ToolbarLayoutStrategy
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.extensions.ExtensionNotApplicableException
+import com.intellij.openapi.help.HelpManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManager
-import com.intellij.openapi.vcs.changes.ui.ChangesViewContentManagerListener
 import com.intellij.openapi.vcs.changes.ui.ChangesViewContentProvider
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.ScrollPaneFactory
@@ -21,14 +26,19 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
+import com.intellij.util.ui.StatusText
 import com.intellij.util.ui.components.BorderLayoutPanel
 import com.intellij.vcs.git.repo.GitRepositoriesHolder
-import com.intellij.vcs.git.repo.GitRepositoryModel
 import git4idea.GitWorkingTree
-import git4idea.actions.workingTree.GitWorkingTreeActionsDataKeys
+import git4idea.actions.workingTree.GitCreateWorkingTreeService
+import git4idea.actions.workingTree.GitWorkingTreeTabActionsDataKeys
 import git4idea.i18n.GitBundle
+import git4idea.repo.GitRepository
+import git4idea.workingTrees.GitWorkingTreesNewBadgeUtil
 import git4idea.workingTrees.GitWorkingTreesService
+import kotlinx.coroutines.launch
 import java.awt.Component
+import java.awt.ComponentOrientation
 import java.awt.Point
 import java.util.function.Predicate
 import javax.swing.DefaultListModel
@@ -36,6 +46,16 @@ import javax.swing.JList
 import javax.swing.SwingConstants
 
 internal class GitWorkingTreesContentProvider(private val project: Project) : ChangesViewContentProvider {
+
+  companion object {
+    //registered with com.intellij.statistics.actionCustomPlaceAllowlist ExtensionPoint
+    internal const val GIT_WORKING_TREE_TOOLWINDOW_TAB_TOOLBAR: String = "GitWorkingTreeToolWindowTabToolbar"
+    internal const val GIT_WORKING_TREE_TOOLWINDOW_TAB_EMPTY_LIST: String = "GitWorkingTreeToolWindowTabEmptyList"
+
+    private const val EMPTY_TAB_WORKING_TREE_CONCEPT_HELP_ID = "worktree-concept"
+    private const val TOOLWINDOW_CONTENT_HELP_ID = "worktree-help"
+  }
+
   override fun initTabContent(content: Content) {
     content.component = GitWorkingTreesUi()
   }
@@ -46,8 +66,10 @@ internal class GitWorkingTreesContentProvider(private val project: Project) : Ch
       val scrollPane = ScrollPaneFactory.createScrollPane(list, true)
       addToCenter(scrollPane)
 
-      val toolbarActionGroup = ActionManager.getInstance().getAction("Git.WorkingTrees.ToolwindowGroup.Toolbar") as ActionGroup
-      val toolbar = ActionManager.getInstance().createActionToolbar(CHANGES_VIEW_TOOLBAR, toolbarActionGroup, false)
+      val actionManager = ActionManager.getInstance()
+      val toolbarActionGroup = actionManager.getAction("Git.WorkingTrees.ToolwindowGroup.Toolbar") as ActionGroup
+      val toolbar = actionManager.createActionToolbar(GIT_WORKING_TREE_TOOLWINDOW_TAB_TOOLBAR,
+                                                      toolbarActionGroup, false)
       toolbar.setTargetComponent(list)
       toolbar.layoutStrategy = ToolbarLayoutStrategy.AUTOLAYOUT_STRATEGY
       toolbar.setOrientation(SwingConstants.VERTICAL)
@@ -61,7 +83,7 @@ internal class GitWorkingTreesContentProvider(private val project: Project) : Ch
 
     init {
       list.cellRenderer = WorkingTreesListRenderer()
-      list.emptyText.text = GitBundle.message("toolwindow.working.trees.tab.empty.text")
+      initEmptyText(list.emptyText)
       addToCenter(list)
 
       list.addMouseListener(object : PopupHandler() {
@@ -77,24 +99,45 @@ internal class GitWorkingTreesContentProvider(private val project: Project) : Ch
         }
       })
 
-      project.messageBus.connect(GitWorkingTreesService.getInstance(project).coroutineScope)
-        .subscribe(GitRepositoriesHolder.UPDATES, GitRepositoriesHolder.UpdatesListener { event ->
+      GitWorkingTreesService.getInstance(project).coroutineScope.launch {
+        GitRepositoriesHolder.getInstance(project).updates.collect { event ->
           if (event == GitRepositoriesHolder.UpdateType.WORKING_TREES_LOADED) {
             ApplicationManager.getApplication().invokeLater {
               model.reload(project)
             }
           }
-        })
+        }
+      }
+    }
+
+    private fun initEmptyText(emptyText: StatusText) {
+      emptyText.text = GitBundle.message("toolwindow.working.trees.tab.empty.text")
+      emptyText.withUnscaledGapAfter(20)
+      emptyText.appendLine(GitBundle.message("toolwindow.working.trees.tab.empty.text.create.working.tree"),
+                           SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { _ ->
+        val repository = model.repository
+        if (repository != null) {
+          GitCreateWorkingTreeService.getInstance().collectDataAndCreateWorkingTree(repository,
+                                                                                    null,
+                                                                                    GIT_WORKING_TREE_TOOLWINDOW_TAB_EMPTY_LIST)
+        }
+      }
+      emptyText.appendLine(AllIcons.General.ContextHelp,
+                           GitBundle.message("toolwindow.working.trees.tab.empty.what.git.worktree"),
+                           SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { _ ->
+        HelpManager.getInstance().invokeHelp(EMPTY_TAB_WORKING_TREE_CONCEPT_HELP_ID)
+      }
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
-      sink[GitWorkingTreeActionsDataKeys.SELECTED_WORKING_TREES] = list.selectedValuesList
-      sink[GitWorkingTreeActionsDataKeys.GIT_REPOSITORY_MODEL_ID] = model.repository?.repositoryId
+      sink[GitWorkingTreeTabActionsDataKeys.SELECTED_WORKING_TREES] = list.selectedValuesList
+      sink[GitWorkingTreeTabActionsDataKeys.CURRENT_REPOSITORY] = model.repository
+      sink[PlatformCoreDataKeys.HELP_ID] = TOOLWINDOW_CONTENT_HELP_ID
     }
   }
 
   private class WorkingTreesListModel(project: Project) : DefaultListModel<GitWorkingTree>() {
-    var repository: GitRepositoryModel? = null
+    var repository: GitRepository? = null
       private set
 
     init {
@@ -103,9 +146,9 @@ internal class GitWorkingTreesContentProvider(private val project: Project) : Ch
 
     fun reload(project: Project) {
       clear()
-      val currentRepository = GitWorkingTreesService.getInstance(project).getSingleRepositoryInProjectRootOrNull()
+      val currentRepository = GitWorkingTreesService.getRepoForWorkingTreesSupport(project)
       repository = currentRepository
-      val workingTrees = currentRepository?.state?.workingTrees
+      val workingTrees = currentRepository?.workingTreeHolder?.getWorkingTrees()
       if (workingTrees != null && workingTrees.size > 1) {
         workingTrees.forEach {
           if (it.isMain) {
@@ -145,8 +188,16 @@ internal class GitWorkingTreesContentPreloader(val project: Project) : ChangesVi
   override fun preloadTabContent(content: Content) {
     content.putUserData(ChangesViewContentManager.ORDER_WEIGHT_KEY, ChangesViewContentManager.TabOrderWeight.WORKING_TREES.weight)
 
-    content.isCloseable = true
-    content.displayName = GitBundle.message("toolwindow.working.trees.tab.name")
+    content.apply {
+      isCloseable = true
+      displayName = GitBundle.message("toolwindow.working.trees.tab.name")
+      if (GitWorkingTreesNewBadgeUtil.shouldShowBadgeNew()) {
+        icon = AllIcons.General.New_badge
+        putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
+        putUserData(ToolWindowContentUi.NOT_SELECTED_TAB_ICON_TRANSPARENT, false)
+        putUserData(Content.TAB_LABEL_ORIENTATION_KEY, ComponentOrientation.RIGHT_TO_LEFT)
+      }
+    }
     // content.manager is not yet initialized here
     ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.VCS)?.contentManager?.addContentManagerListener(object : ContentManagerListener {
       override fun contentRemoved(event: ContentManagerEvent) {
@@ -165,19 +216,3 @@ internal class GitWorkingTreesContentVisibilityPredicate : Predicate<Project> {
   }
 }
 
-internal class GitWorkingTreeToolwindowUpdateListener(private val project: Project) : GitRepositoriesHolder.UpdatesListener {
-  init {
-    val app = ApplicationManager.getApplication()
-    if (app.isUnitTestMode || app.isHeadlessEnvironment) {
-      throw ExtensionNotApplicableException.create()
-    }
-  }
-
-  override fun afterUpdate(updateType: GitRepositoriesHolder.UpdateType) {
-    if (updateType == GitRepositoriesHolder.UpdateType.WORKING_TREES_LOADED || updateType == GitRepositoriesHolder.UpdateType.RELOAD_STATE) {
-      ApplicationManager.getApplication().invokeLater {
-        project.getMessageBus().syncPublisher(ChangesViewContentManagerListener.TOPIC).toolWindowMappingChanged()
-      }
-    }
-  }
-}

@@ -8,7 +8,6 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.module.Module
-import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.isNotificationSilentMode
 import com.intellij.openapi.projectRoots.Sdk
@@ -38,30 +37,24 @@ object PyProjectSdkConfiguration {
     val project = module.project
     PyPackageCoroutine.launch(project) {
       withBackgroundProgress(project, createSdkInfoWithTool.createSdkInfo.intentionName, false) {
-        lifetime.use { setSdkUsingCreateSdkInfo(module, createSdkInfoWithTool, false) }
+        lifetime.use { setSdkUsingCreateSdkInfo(module, createSdkInfoWithTool) }
       }
     }
   }
 
   suspend fun setSdkUsingCreateSdkInfo(
-    module: Module, createSdkInfoWithTool: CreateSdkInfoWithTool, needsConfirmation: NeedsConfirmation,
+    module: Module, createSdkInfoWithTool: CreateSdkInfoWithTool,
   ): Boolean = withContext(Dispatchers.Default) {
     thisLogger().debug("Configuring sdk using ${createSdkInfoWithTool.toolId}")
 
-    val sdk = createSdkInfoWithTool.createSdkInfo.sdkCreator(needsConfirmation).getOr {
+    val sdk = createSdkInfoWithTool.createSdkInfo.getSdkCreator(module).createSdk().getOr {
       ShowingMessageErrorSync.emit(it.error, module.project)
       return@withContext true
-    } ?: return@withContext false
+    }
 
     setReadyToUseSdk(module.project, module, sdk)
     thisLogger().debug("Successfully configured sdk using ${createSdkInfoWithTool.toolId}")
     true
-  }
-
-  fun setReadyToUseSdkSync(project: Project, module: Module, sdk: Sdk) {
-    runBlockingMaybeCancellable {
-      setReadyToUseSdk(project, module, sdk)
-    }
   }
 
   suspend fun setReadyToUseSdk(project: Project, module: Module, sdk: Sdk) {

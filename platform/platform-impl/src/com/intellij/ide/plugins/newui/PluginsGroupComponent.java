@@ -4,7 +4,6 @@ package com.intellij.ide.plugins.newui;
 import com.intellij.accessibility.AccessibilityUtils;
 import com.intellij.ide.plugins.ListPluginModel;
 import com.intellij.ide.plugins.PluginManagerConfigurable;
-import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBPanelWithEmptyText;
 import com.intellij.ui.components.panels.NonOpaquePanel;
@@ -20,12 +19,24 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.accessibility.AccessibleContext;
 import javax.accessibility.AccessibleRole;
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollBar;
+import javax.swing.SwingUtilities;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.Insets;
 import java.awt.event.AdjustmentEvent;
 import java.awt.event.AdjustmentListener;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.*;
+import java.util.Set;
 import java.util.function.Consumer;
 
 @ApiStatus.Internal
@@ -57,11 +68,11 @@ public abstract class PluginsGroupComponent extends JBPanelWithEmptyText {
           PluginsGroup group = component.getGroup();
           if (!addedGroups.contains(group)) {
             addedGroups.add(group);
-            if (UIUtil.isFocusable(group.rightAction)) {
-              orderedComponents.add(group.rightAction);
+            if (UIUtil.isFocusable(group.mainAction)) {
+              orderedComponents.add(group.mainAction);
             }
-            else if (!ContainerUtil.isEmpty(group.rightActions)) {
-              orderedComponents.addAll(ContainerUtil.filter(group.rightActions, UIUtil::isFocusable));
+            else if (!ContainerUtil.isEmpty(group.secondaryActions)) {
+              orderedComponents.addAll(ContainerUtil.filter(group.secondaryActions, UIUtil::isFocusable));
             }
           }
 
@@ -197,14 +208,14 @@ public abstract class PluginsGroupComponent extends JBPanelWithEmptyText {
     panel.add(title, BorderLayout.WEST);
     group.titleLabel = title;
 
-    if (group.rightAction != null) {
-      panel.add(group.rightAction, BorderLayout.EAST);
+    if (group.mainAction != null) {
+      panel.add(group.mainAction, BorderLayout.EAST);
     }
-    else if (!ContainerUtil.isEmpty(group.rightActions)) {
+    else if (!ContainerUtil.isEmpty(group.secondaryActions)) {
       JPanel actions = new NonOpaquePanel(new HorizontalLayout(JBUIScale.scale(5)));
       panel.add(actions, BorderLayout.EAST);
 
-      for (JComponent action : group.rightActions) {
+      for (JComponent action : group.secondaryActions) {
         actions.add(action);
       }
     }
