@@ -2,6 +2,7 @@
 
 package org.jetbrains.kotlin.idea.codeInsight.gradle
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.externalSystem.importing.ImportSpec
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder
@@ -10,6 +11,8 @@ import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.impl.libraries.LibraryEx
+import com.intellij.platform.testFramework.assertion.listenerAssertion.ListenerAssertion
+import com.intellij.util.application
 import junit.framework.TestCase
 import org.jetbrains.jps.model.java.JavaResourceRootType
 import org.jetbrains.jps.model.java.JavaSourceRootType
@@ -46,6 +49,8 @@ import org.jetbrains.kotlin.platform.isCommon
 import org.jetbrains.kotlin.platform.isJs
 import org.jetbrains.kotlin.platform.js.JsPlatforms
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
+import org.jetbrains.plugins.gradle.service.project.ProjectResolverContext
+import org.jetbrains.plugins.gradle.service.syncAction.GradleSyncListener
 import org.jetbrains.plugins.gradle.tooling.annotation.TargetVersions
 import org.junit.Ignore
 import org.junit.Test
@@ -62,37 +67,59 @@ val KotlinGradleImportingTestCase.testFacetSettings: IKotlinFacetSettings
     get() = facetSettings("project.test")
 
 class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
-    @Test
-    fun testJvmImport() {
-        configureByFiles()
-        importProject()
 
-        with(facetSettings) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.6", apiLevel!!.versionString)
-            assertFalse(compilerArguments!!.autoAdvanceLanguageVersion)
-            assertFalse(compilerArguments!!.autoAdvanceApiVersion)
-            assertEquals(JvmPlatforms.jvm8, targetPlatform)
-            assertEquals("1.7", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
-            assertEquals("-Xjava-source-roots=tmp", compilerSettings!!.additionalArguments)
+    private fun runJvmImportTest(facetSettingsAssertions: () -> Unit) {
+        val modelFetchCompletionAssertion = ListenerAssertion()
+
+        whenModelFetchCompleted(testRootDisposable) {
+            modelFetchCompletionAssertion.trace {
+                facetSettingsAssertions()
+            }
         }
 
-        with(testFacetSettings) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.0", apiLevel!!.versionString)
-            assertFalse(compilerArguments!!.autoAdvanceLanguageVersion)
-            assertFalse(compilerArguments!!.autoAdvanceApiVersion)
-            assertEquals(JvmPlatforms.jvm6, targetPlatform)
-            assertEquals("1.6", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
-            assertEquals(
-                "-Xjava-source-roots=tmpTest",
-                compilerSettings!!.additionalArguments
-            )
+
+        configureByFiles()
+        val holder = KotlinCommonCompilerArgumentsHolder.getInstance(myProject)
+        holder.update { languageVersion = "1.1" }
+        importProject()
+
+        modelFetchCompletionAssertion.assertListenerState(1) {
+            "Model fetch should have completed"
+        }
+        modelFetchCompletionAssertion.assertListenerFailures()
+        facetSettingsAssertions()
+
+    }
+
+    @Test
+    fun testJvmImport() {
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.6", apiLevel!!.versionString)
+                assertFalse(compilerArguments!!.autoAdvanceLanguageVersion)
+                assertFalse(compilerArguments!!.autoAdvanceApiVersion)
+                assertEquals(JvmPlatforms.jvm8, targetPlatform)
+                assertEquals("1.7", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
+                assertEquals("-Xjava-source-roots=tmp", compilerSettings!!.additionalArguments)
+            }
+
+            with(testFacetSettings) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.0", apiLevel!!.versionString)
+                assertFalse(compilerArguments!!.autoAdvanceLanguageVersion)
+                assertFalse(compilerArguments!!.autoAdvanceApiVersion)
+                assertEquals(JvmPlatforms.jvm6, targetPlatform)
+                assertEquals("1.6", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
+                assertEquals(
+                    "-Xjava-source-roots=tmpTest",
+                    compilerSettings!!.additionalArguments
+                )
+            }
+            assertAllModulesConfigured()
         }
 
         assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
-
-        assertAllModulesConfigured()
 
         assertEquals(
             listOf(
@@ -113,36 +140,35 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
         )
     }
 
+
     @Test
     fun testJvmImportWithPlugin() {
-        configureByFiles()
-        importProject()
-
-        assertAllModulesConfigured()
+        runJvmImportTest {
+            assertAllModulesConfigured()
+        }
     }
 
     @Test
     fun testJvmImportWithCustomSourceSets() {
-        configureByFiles()
-        importProject()
+        runJvmImportTest {
+            with(facetSettings("project.myMain")) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.6", apiLevel!!.versionString)
+                assertEquals(JvmPlatforms.jvm8, targetPlatform)
+                assertEquals("1.7", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
+                assertEquals("-Xjava-source-roots=tmp", compilerSettings!!.additionalArguments)
+            }
 
-        with(facetSettings("project.myMain")) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.6", apiLevel!!.versionString)
-            assertEquals(JvmPlatforms.jvm8, targetPlatform)
-            assertEquals("1.7", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
-            assertEquals("-Xjava-source-roots=tmp", compilerSettings!!.additionalArguments)
+            with(facetSettings("project.myTest")) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.0", apiLevel!!.versionString)
+                assertEquals(JvmPlatforms.jvm6, targetPlatform)
+                assertEquals("1.6", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
+                assertEquals("-Xjava-source-roots=tmpTest", compilerSettings!!.additionalArguments)
+            }
+
+            assertAllModulesConfigured()
         }
-
-        with(facetSettings("project.myTest")) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.0", apiLevel!!.versionString)
-            assertEquals(JvmPlatforms.jvm6, targetPlatform)
-            assertEquals("1.6", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
-            assertEquals("-Xjava-source-roots=tmpTest", compilerSettings!!.additionalArguments)
-        }
-
-        assertAllModulesConfigured()
 
         assertEquals(
             listOf(
@@ -166,22 +192,21 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
     @Test
     @TargetVersions("6.0.1") // Gradle 4.9 isn't able to import 1.4 KGP
     fun testJpsCompilerMultiModule() {
-        configureByFiles()
-        importProject()
+        runJvmImportTest {
 
-        with(facetSettings("project.module1.main")) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.6", apiLevel!!.versionString)
-        }
+            with(facetSettings("project.module1.main")) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.6", apiLevel!!.versionString)
+            }
 
-        with(facetSettings("project.module2.main")) {
-            assertEquals("1.4", languageLevel!!.versionString)
-            assertEquals("1.4", apiLevel!!.versionString)
+            with(facetSettings("project.module2.main")) {
+                assertEquals("1.4", languageLevel!!.versionString)
+                assertEquals("1.4", apiLevel!!.versionString)
+            }
+            assertAllModulesConfigured()
         }
 
         assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
-
-        assertAllModulesConfigured()
     }
 
     @Test
@@ -352,13 +377,12 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testJvmImportByPlatformPlugin() {
-        configureByFiles()
-        importProject()
-
-        with(facetSettings) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.6", apiLevel!!.versionString)
-            assertEquals(JvmPlatforms.jvm6, targetPlatform)
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.6", apiLevel!!.versionString)
+                assertEquals(JvmPlatforms.jvm6, targetPlatform)
+            }
         }
 
         assertEquals(
@@ -450,13 +474,12 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testJvmImportByKotlinPlugin() {
-        configureByFiles()
-        importProject()
-
-        with(facetSettings) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.6", apiLevel!!.versionString)
-            assertEquals(JvmPlatforms.jvm6, targetPlatform)
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.6", apiLevel!!.versionString)
+                assertEquals(JvmPlatforms.jvm6, targetPlatform)
+            }
         }
 
         assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
@@ -512,14 +535,13 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testArgumentEscaping() {
-        configureByFiles()
-        importProject()
-
-        with(facetSettings) {
-            assertEquals(
-                listOf("-Xbuild-file=module with spaces"),
-                compilerSettings!!.additionalArgumentsAsList
-            )
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals(
+                    listOf("-Xbuild-file=module with spaces"),
+                    compilerSettings!!.additionalArgumentsAsList
+                )
+            }
         }
     }
 
@@ -601,33 +623,30 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
     @Test
     @TargetVersions("<7.6")
     fun testNoFacetInModuleWithoutKotlinPlugin() {
-        configureByFiles()
+        runJvmImportTest {
+            assertNotNull(KotlinFacet.get(getModule("gr01.main")))
+            assertNotNull(KotlinFacet.get(getModule("gr01.test")))
+            assertNull(KotlinFacet.get(getModule("gr01.m1.main")))
+            assertNull(KotlinFacet.get(getModule("gr01.m1.test")))
+        }
 
-        importProject()
-
-        assertNotNull(KotlinFacet.get(getModule("gr01.main")))
-        assertNotNull(KotlinFacet.get(getModule("gr01.test")))
-        assertNull(KotlinFacet.get(getModule("gr01.m1.main")))
-        assertNull(KotlinFacet.get(getModule("gr01.m1.test")))
     }
 
     @Test
     fun testClasspathWithDependenciesImport() {
-        configureByFiles()
-        importProject()
-
-        with(facetSettings) {
-            assertEquals("tmp.jar", (compilerArguments as K2JVMCompilerArguments).classpath)
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals("tmp.jar", (compilerArguments as K2JVMCompilerArguments).classpath)
+            }
         }
     }
 
     @Test
     fun testDependenciesClasspathImport() {
-        configureByFiles()
-        importProject()
-
-        with(facetSettings) {
-            assertEquals(null, (compilerArguments as K2JVMCompilerArguments).classpath)
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals(null, (compilerArguments as K2JVMCompilerArguments).classpath)
+            }
         }
     }
 
@@ -666,15 +685,14 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testApiVersionExceedingLanguageVersion() {
-        configureByFiles()
-        importProject()
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals("1.1", languageLevel!!.versionString)
+                assertEquals("1.2", apiLevel!!.versionString)
+            }
 
-        with(facetSettings) {
-            assertEquals("1.1", languageLevel!!.versionString)
-            assertEquals("1.2", apiLevel!!.versionString)
+            assertAllModulesConfigured()
         }
-
-        assertAllModulesConfigured()
     }
 
     @Test
@@ -684,15 +702,14 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             apiVersion = "1.0"
         }
 
-        configureByFiles()
-        importProject()
+        runJvmImportTest {
+            with(facetSettings) {
+                assertEquals("1.6", languageLevel!!.versionString)
+                assertEquals("1.6", apiLevel!!.versionString)
+            }
 
-        with(facetSettings) {
-            assertEquals("1.6", languageLevel!!.versionString)
-            assertEquals("1.6", apiLevel!!.versionString)
+            assertAllModulesConfigured()
         }
-
-        assertAllModulesConfigured()
     }
 
     @Test
@@ -748,22 +765,24 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testInternalArgumentsFacetImporting() {
-        configureByFiles()
-        importProject()
+        runJvmImportTest {
+            // Version is indeed 1.3
+            assertEquals(LanguageVersion.KOTLIN_1_3, facetSettings.languageLevel)
 
-        // Version is indeed 1.3
-        assertEquals(LanguageVersion.KOTLIN_1_3, facetSettings.languageLevel)
+            // We haven't lost internal argument during importing to facet
+            assertTrue(
+                "Argument is missing from compiler settings",
+                "-XXLanguage:+InlineClasses" in facetSettings.compilerSettings!!.additionalArguments
+            )
 
-        // We haven't lost internal argument during importing to facet
-        assertTrue("Argument is missing from compiler settings", "-XXLanguage:+InlineClasses" in facetSettings.compilerSettings!!.additionalArguments)
+            // Inline classes are enabled even though LV = 1.3
+            assertEquals(
+                LanguageFeature.State.ENABLED,
+                getModule("project.main").languageVersionSettings.getFeatureSupport(LanguageFeature.InlineClasses)
+            )
 
-        // Inline classes are enabled even though LV = 1.3
-        assertEquals(
-            LanguageFeature.State.ENABLED,
-            getModule("project.main").languageVersionSettings.getFeatureSupport(LanguageFeature.InlineClasses)
-        )
-
-        assertAllModulesConfigured()
+            assertAllModulesConfigured()
+        }
     }
 
     @Test
@@ -791,11 +810,10 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testNoFriendPathsAreShown() {
-        configureByFiles()
-        importProject()
-
-        assertEquals("", testFacetSettings.compilerSettings!!.additionalArguments)
-        assertAllModulesConfigured()
+        runJvmImportTest {
+            assertEquals("", testFacetSettings.compilerSettings!!.additionalArguments)
+            assertAllModulesConfigured()
+        }
     }
 
     @Test
@@ -825,11 +843,10 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testImportCompilerArgumentsWithInvalidDependencies() {
-        configureByFiles()
-        importProject()
-
-        with(facetSettings("project.main")) {
-            assertEquals("1.8", (mergedCompilerArguments as K2JVMCompilerArguments).jvmTarget)
+        runJvmImportTest {
+            with(facetSettings("project.main")) {
+                assertEquals("1.8", (mergedCompilerArguments as K2JVMCompilerArguments).jvmTarget)
+            }
         }
     }
 
@@ -868,4 +885,14 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
         ImportSpecBuilder(super.createImportSpec()).createDirectoriesForEmptyContentRoots().build()
 
     override fun testDataDirName(): String = "gradleFacetImportTest"
+
+    fun whenModelFetchCompleted(parentDisposable: Disposable, action: (ProjectResolverContext) -> Unit) {
+        application.messageBus.connect(parentDisposable)
+            .subscribe(GradleSyncListener.TOPIC, object : GradleSyncListener {
+                override fun onModelFetchCompleted(context: ProjectResolverContext) {
+                    action(context)
+                }
+            })
+    }
+
 }

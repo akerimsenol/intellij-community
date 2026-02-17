@@ -177,95 +177,67 @@ fun applyCompilerArgumentsToFacetSettings(
     module: Module?,
     modelsProvider: IdeModifiableModelsProvider?
 ) {
-    with(kotlinFacetSettings) {
-        updateCompilerArguments {
+    kotlinFacetSettings.updateCompilerArguments {
+        val oldPluginOptions = this.pluginOptions
+        val emptyArgs = this::class.java.getDeclaredConstructor().newInstance()
 
-
-            val oldPluginOptions = this.pluginOptions
-            val emptyArgs = this::class.java.getDeclaredConstructor().newInstance()
-
-            // Ad-hoc work-around for android compilations: middle source sets could be actualized up to
-            // Android target, meanwhile compiler arguments are of type K2Metadata
-            // TODO(auskov): merge classpath once compiler arguments are removed from KotlinFacetSettings
-            if (arguments.javaClass == this.javaClass) {
-                copyBeanTo(arguments, this) { property, value -> value != property.get(emptyArgs) }
-            }
-            this.pluginOptions = joinPluginOptions(oldPluginOptions, arguments.pluginOptions)
-
-            this.convertPathsToSystemIndependent()
-
-            // Retain only fields exposed (and not explicitly ignored) in facet configuration editor.
-            // The rest is combined into string and stored in CompilerSettings.additionalArguments
-
-            if (modelsProvider != null && module != null)
-                module.configureSdkIfPossible(this, modelsProvider)
-
-            val allFacetFields = this.kotlinFacetFields.allFields
-
-            val ignoredFields = hashSetOf(
-                K2JVMCompilerArguments::noJdk.name,
-                K2JVMCompilerArguments::jdkHome.name,
-            )
-
-            val ignoredAsAdditionalArguments = ignoredFields + hashSetOf(
-                CommonCompilerArguments::fragments.name,
-                CommonCompilerArguments::fragmentRefines.name,
-                CommonCompilerArguments::fragmentSources.name,
-
-                K2JVMCompilerArguments::moduleName.name,
-                K2JVMCompilerArguments::noReflect.name,
-                K2JVMCompilerArguments::noStdlib.name,
-                K2JVMCompilerArguments::allowNoSourceFiles.name,
-                K2JVMCompilerArguments::jvmDefault.name,
-                K2JVMCompilerArguments::reportPerf.name,
-
-                K2NativeCompilerArguments::enableAssertions.name,
-                K2NativeCompilerArguments::debug.name,
-                K2NativeCompilerArguments::outputName.name,
-                K2NativeCompilerArguments::linkerArguments.name,
-                K2NativeCompilerArguments::singleLinkerArguments.name,
-                K2NativeCompilerArguments::produce.name,
-                K2NativeCompilerArguments::target.name,
-                K2NativeCompilerArguments::shortModuleName.name,
-                K2NativeCompilerArguments::noendorsedlibs.name,
-
-                K2JSCompilerArguments::outputFile.name,
-
-                K2JSCompilerArguments::outputDir.name,
-                K2JSCompilerArguments::moduleName.name,
-        )
-
-            fun exposeAsAdditionalArgument(property: KProperty1<CommonCompilerArguments, Any?>) =
-                /* Handled by facet directly */
-                property.name !in allFacetFields &&
-                        /* Explicitly  not shown to users as 'additional arguments' */
-                        property.name !in ignoredAsAdditionalArguments &&
-                        /* Default value from compiler arguments is used */
-                        property.get(this) != property.get(emptyArgs)
-
-
-            val additionalArgumentsString = with(this::class.java.getDeclaredConstructor().newInstance()) {
-                copyFieldsSatisfying(this@updateCompilerArguments, this) { exposeAsAdditionalArgument(it) }
-                val internalArguments = internalArguments.map(ManualLanguageFeatureSetting::stringRepresentation).toSet()
-                freeArgs = freeArgs.filterNot { it in internalArguments }
-                toArgumentStrings().joinToString(separator = " ") {
-                    if (StringUtil.containsWhitespaces(it) || it.startsWith('"')) {
-                        StringUtil.wrapWithDoubleQuote(StringUtil.escapeQuotes(it))
-                    } else it
-                }
-            }
-
-            compilerSettings?.additionalArguments = additionalArgumentsString.ifEmpty { CompilerSettings.DEFAULT_ADDITIONAL_ARGUMENTS }
-
-            /* 'Reset' ignored fields and arguments that will be exposed as 'additional arguments' to the user */
-            with(this::class.java.getDeclaredConstructor().newInstance()) {
-                copyFieldsSatisfying(this, this@updateCompilerArguments) { exposeAsAdditionalArgument(it) || it.name in ignoredFields }
-            }
-
-            updateMergedArguments()
+        // Ad-hoc work-around for android compilations: middle source sets could be actualized up to
+        // Android target, meanwhile compiler arguments are of type K2Metadata
+        // TODO(auskov): merge classpath once compiler arguments are removed from KotlinFacetSettings
+        if (arguments.javaClass == this.javaClass) {
+            copyBeanTo(arguments, this) { property, value -> value != property.get(emptyArgs) }
         }
+        this.pluginOptions = joinPluginOptions(oldPluginOptions, arguments.pluginOptions)
+
+        this.convertPathsToSystemIndependent()
+
+        // Retain only fields exposed (and not explicitly ignored) in facet configuration editor.
+        // The rest is combined into string and stored in CompilerSettings.additionalArguments
+        if (modelsProvider != null && module != null)
+            module.configureSdkIfPossible(this, modelsProvider)
+
+        val allFacetFields = this.kotlinFacetFields.allFields
+
+        val additionalArgumentsString = getAdditionalArgumentsString(this, emptyArgs, allFacetFields)
+        kotlinFacetSettings.compilerSettings?.additionalArguments = additionalArgumentsString
+
+        resetArguments(this, emptyArgs, allFacetFields )
+
+        kotlinFacetSettings.updateMergedArguments()
     }
 }
+
+fun getAdditionalArgumentsString(
+    args: CommonCompilerArguments,
+    emptyArgs: CommonCompilerArguments,
+    allFacetFields: List<String> = args.kotlinFacetFields.allFields
+) = with(args::class.java.getDeclaredConstructor().newInstance()) {
+    copyFieldsSatisfying(args, this) { exposeAsAdditionalArgument(it, args, emptyArgs, allFacetFields) }
+    val internalArguments = internalArguments.map(ManualLanguageFeatureSetting::stringRepresentation).toSet()
+    freeArgs = freeArgs.filterNot { it in internalArguments }
+    toArgumentStrings().joinToString(separator = " ") {
+        if (StringUtil.containsWhitespaces(it) || it.startsWith('"')) {
+            StringUtil.wrapWithDoubleQuote(StringUtil.escapeQuotes(it))
+        } else it
+    }
+}.ifEmpty { CompilerSettings.DEFAULT_ADDITIONAL_ARGUMENTS }
+
+
+/* 'Reset' ignored fields and arguments that will be exposed as 'additional arguments' to the user */
+private fun resetArguments(args: CommonCompilerArguments, emptyArgs: CommonCompilerArguments, allFacetFields: List<String>) {
+    with(args::class.java.getDeclaredConstructor().newInstance()) {
+        copyFieldsSatisfying(this, args) { exposeAsAdditionalArgument(it, args, emptyArgs, allFacetFields) || it.name in ignoredFields }
+    }
+}
+
+private fun exposeAsAdditionalArgument(
+    property: KProperty1<CommonCompilerArguments, Any?>,
+    args: CommonCompilerArguments,
+    emptyArgs: CommonCompilerArguments,
+    allFacetFields: List<String>
+) = property.name !in allFacetFields && // Handled by facet directly
+        property.name !in ignoredAsAdditionalArguments && // Explicitly  not shown to users as 'additional arguments'
+        property.get(args) != property.get(emptyArgs) // Default value from compiler arguments is used
 
 private fun Module.configureSdkIfPossible(compilerArguments: CommonCompilerArguments, modelsProvider: IdeModifiableModelsProvider) {
     // SDK for Android module is already configured by Android plugin at this point
@@ -320,3 +292,36 @@ private fun joinPluginOptions(old: Array<String>?, new: Array<String>?): Array<S
 
     return (old + new).distinct().toTypedArray()
 }
+
+private val ignoredFields = hashSetOf(
+    K2JVMCompilerArguments::noJdk.name,
+    K2JVMCompilerArguments::jdkHome.name,
+)
+
+private val ignoredAsAdditionalArguments = ignoredFields + hashSetOf(
+    CommonCompilerArguments::fragments.name,
+    CommonCompilerArguments::fragmentRefines.name,
+    CommonCompilerArguments::fragmentSources.name,
+
+    K2JVMCompilerArguments::moduleName.name,
+    K2JVMCompilerArguments::noReflect.name,
+    K2JVMCompilerArguments::noStdlib.name,
+    K2JVMCompilerArguments::allowNoSourceFiles.name,
+    K2JVMCompilerArguments::jvmDefault.name,
+    K2JVMCompilerArguments::reportPerf.name,
+
+    K2NativeCompilerArguments::enableAssertions.name,
+    K2NativeCompilerArguments::debug.name,
+    K2NativeCompilerArguments::outputName.name,
+    K2NativeCompilerArguments::linkerArguments.name,
+    K2NativeCompilerArguments::singleLinkerArguments.name,
+    K2NativeCompilerArguments::produce.name,
+    K2NativeCompilerArguments::target.name,
+    K2NativeCompilerArguments::shortModuleName.name,
+    K2NativeCompilerArguments::noendorsedlibs.name,
+
+    K2JSCompilerArguments::outputFile.name,
+
+    K2JSCompilerArguments::outputDir.name,
+    K2JSCompilerArguments::moduleName.name,
+)
