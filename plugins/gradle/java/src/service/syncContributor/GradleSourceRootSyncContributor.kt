@@ -5,6 +5,7 @@ import com.intellij.java.workspace.entities.JavaResourceRootPropertiesEntity
 import com.intellij.java.workspace.entities.JavaSourceRootPropertiesEntity
 import com.intellij.java.workspace.entities.javaResourceRoots
 import com.intellij.java.workspace.entities.javaSourceRoots
+import com.intellij.openapi.externalSystem.autolink.forEachExtensionSafeAsync
 import com.intellij.openapi.externalSystem.model.project.ExternalSystemSourceType
 import com.intellij.openapi.externalSystem.model.project.IExternalSystemSourceType
 import com.intellij.openapi.progress.checkCanceled
@@ -88,7 +89,11 @@ internal class GradleSourceRootSyncContributor : GradleSyncContributor {
           val contentRootPaths = contentRootIndex.resolveContentRoots(externalProject, sourceSet)
           val sourceSetModuleName = GradleProjectResolverUtil.resolveSourceSetModuleName(context, storage, projectModel, externalProject, sourceSet.name)
           val sourceRootData = GradleSourceRootData(externalProject, sourceSet, contentRootPaths, sourceSetModuleName, entitySource)
-          storage addEntity createModuleEntity(context, sourceRootData)
+          val moduleEntity = createModuleEntity(context, sourceRootData)
+          GradleSourceRootSyncContributorExtension.EP_NAME.forEachExtensionSafeAsync {
+            it.configureSourceSetModules(context, storage, buildModel, projectModel, moduleEntity, sourceSet)
+          }
+          storage addEntity moduleEntity
         }
       }
     }
